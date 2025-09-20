@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sado Maintenance Copilot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body { font-family: "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+      header { padding: 1.5rem; background: #1e293b; }
+      main { padding: 1.5rem; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+      section { background: #1e293b; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.4); }
+      h1, h2 { margin: 0 0 1rem 0; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 0.5rem; border-bottom: 1px solid #334155; text-align: left; }
+      .badge { border-radius: 9999px; padding: 0.2rem 0.6rem; font-size: 0.8rem; background: #38bdf8; color: #0f172a; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>설비 보전 Copilot 현황판</h1>
+      <p>미국 ETF &amp; 코인 포트폴리오와 공장 설비 진단을 한눈에 확인하세요.</p>
+    </header>
+    <main>
+      <section>
+        <h2>포트폴리오 제안 (Balanced)</h2>
+        <div id="portfolio"></div>
+      </section>
+      <section>
+        <h2>최근 설비 인사이트</h2>
+        <div id="maintenance"></div>
+      </section>
+    </main>
+    <script>
+      const portfolioData = JSON.parse('{{PORTFOLIO_JSON}}');
+      const maintenanceData = JSON.parse('{{MAINTENANCE_JSON}}');
+
+      function renderPortfolio() {
+        const wrap = document.getElementById('portfolio');
+        const entries = [...(portfolioData.etf || []), ...(portfolioData.coin || [])];
+        if (!entries.length) {
+          wrap.innerHTML = '<p>데이터가 아직 없습니다. 스케줄러가 곧 채워줍니다.</p>';
+          return;
+        }
+        wrap.innerHTML = `
+          <table>
+            <thead>
+              <tr><th>자산</th><th>비중</th><th>신호</th></tr>
+            </thead>
+            <tbody>
+              ${entries.map(item => `
+                <tr>
+                  <td><span class="badge">${item.symbol}</span></td>
+                  <td>${(item.weight * 100).toFixed(1)}%</td>
+                  <td>${(item.score || 0).toFixed(2)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>`;
+      }
+
+      function renderMaintenance() {
+        const wrap = document.getElementById('maintenance');
+        const entries = maintenanceData.insights || [];
+        if (!entries.length) {
+          wrap.innerHTML = '<p>등록된 고장 이력이 없습니다.</p>';
+          return;
+        }
+        wrap.innerHTML = entries.slice(0, 10).map(item => `
+          <article style="margin-bottom:1rem;">
+            <h3>${item.equipment_id}</h3>
+            <p><strong>Issue:</strong> ${item.issue}</p>
+            <p><strong>Recommendation:</strong> ${item.recommendation}</p>
+            <p style="font-size:0.85rem;color:#94a3b8;">${item.timestamp}</p>
+          </article>`).join('');
+      }
+
+      renderPortfolio();
+      renderMaintenance();
+    </script>
+  </body>
+</html>

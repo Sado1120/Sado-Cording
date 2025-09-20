@@ -1,0 +1,4 @@
+equipment_id,issue,recommendation,timestamp
+PRESS-3,Bearing temperature spike,Schedule lubrication and vibration analysis,2024-05-01T09:30:00Z
+CNC-7,Spindle vibration rising,Inspect spindle bearings and balance tooling,2024-05-01T07:15:00Z
+KILN-2,Motor current anomaly,Check inverter settings and replace worn contactors,2024-04-30T23:45:00Z
