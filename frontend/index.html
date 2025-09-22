@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ILJIN Copilot Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <script src="app.js" type="module" defer></script>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero__overlay"></div>
+      <div class="hero__content">
+        <h1>ILJIN Copilot</h1>
+        <p>
+          코인과 글로벌 ETF 포트폴리오를 한 번에 조율하는 차세대 자동매매 콘트롤 센터.
+          전략 연구부터 포트폴리오 리밸런싱까지, 데이터와 디자인으로 집중력을 높여보세요.
+        </p>
+        <div class="hero__cta">
+          <button id="simulate-btn" class="btn btn--primary">전략 시뮬레이션 실행</button>
+          <button id="generate-data-btn" class="btn btn--ghost">샘플 시세 생성</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="panel panel--metrics">
+        <header>
+          <h2>핵심 지표</h2>
+          <span class="badge">실시간</span>
+        </header>
+        <div class="metric-grid">
+          <article class="metric-card">
+            <span class="metric-label">총 수익률</span>
+            <strong id="metric-total-return" class="metric-value">0.00%</strong>
+            <span class="metric-subtext">전략 누적 성과</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">연환산 수익률</span>
+            <strong id="metric-annual-return" class="metric-value">0.00%</strong>
+            <span class="metric-subtext">연간 기준</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">최대 낙폭</span>
+            <strong id="metric-drawdown" class="metric-value">0.00%</strong>
+            <span class="metric-subtext">리스크 헬스체크</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">거래 요약</span>
+            <div class="metric-stack">
+              <span id="metric-trade-count">0건</span>
+              <span id="metric-trade-winrate">승률 0.0%</span>
+              <span id="metric-trade-avg">평균 0.0%</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--chart">
+        <header>
+          <h2>전략 에퀴티 곡선</h2>
+          <span class="panel-subtitle">자본曲선을 통해 상승/하락 리듬을 체크하세요</span>
+        </header>
+        <canvas id="equity-chart" height="160"></canvas>
+      </section>
+
+      <section class="panel panel--controls">
+        <header>
+          <h2>전략 파라미터</h2>
+          <span class="panel-subtitle">EMA 전략을 원하는 감도로 미세 조정</span>
+        </header>
+        <form id="strategy-form" class="control-grid">
+          <label class="control-field">
+            <span>Fast EMA</span>
+            <input type="number" name="fast_period" min="2" max="60" value="12" />
+          </label>
+          <label class="control-field">
+            <span>Slow EMA</span>
+            <input type="number" name="slow_period" min="3" max="200" value="26" />
+          </label>
+          <label class="control-field">
+            <span>초기 자본 (KRW)</span>
+            <input type="number" name="initial_capital" min="100000" step="100000" value="5000000" />
+          </label>
+          <label class="control-field">
+            <span>수수료율</span>
+            <input type="number" name="fee_rate" min="0" max="0.01" step="0.0001" value="0.0005" />
+          </label>
+          <label class="control-field">
+            <span>랜덤 시드</span>
+            <input type="number" name="seed" min="1" step="1" placeholder="선택" />
+          </label>
+          <button class="btn btn--primary" type="submit">시뮬레이션 업데이트</button>
+        </form>
+      </section>
+
+      <section class="panel panel--portfolio">
+        <header>
+          <h2>포트폴리오 리밸런싱</h2>
+          <span class="panel-subtitle">안정/공격 비중을 스마트하게 맞춰드립니다</span>
+        </header>
+        <div class="portfolio-grid">
+          <div>
+            <h3>현재 포지션 (KRW)</h3>
+            <textarea id="current-positions" placeholder='{"SPY": 2500000, "QQQ": 1500000, "BTC": 1200000}'></textarea>
+          </div>
+          <div>
+            <h3>목표 비중</h3>
+            <textarea id="target-allocations" placeholder='{"SPY": 0.35, "QQQ": 0.25, "BTC": 0.25, "ETH": 0.15}'></textarea>
+          </div>
+        </div>
+        <div class="portfolio-actions">
+          <label class="control-field">
+            <span>총 포트폴리오 가치 (KRW)</span>
+            <input id="portfolio-value" type="number" value="8000000" step="100000" />
+          </label>
+          <button id="rebalance-btn" class="btn btn--accent" type="button">리밸런싱 제안 받기</button>
+        </div>
+        <pre id="rebalance-output" class="rebalance-output">리밸런싱 결과가 여기에 표시됩니다.</pre>
+      </section>
+
+      <section class="panel panel--trades">
+        <header>
+          <h2>거래 히스토리</h2>
+          <span class="panel-subtitle">실행 로그로 전략의 감각을 확인하세요</span>
+        </header>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>진입</th>
+                <th>청산</th>
+                <th>진입가</th>
+                <th>청산가</th>
+                <th>수량</th>
+                <th>PnL (KRW)</th>
+                <th>수익률</th>
+              </tr>
+            </thead>
+            <tbody id="trade-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        © <span id="year"></span> ILJIN Copilot · Upbit + Global ETF 멀티자산 어드바이저.
+        자동화, 데이터 스토리텔링, 감각적인 UX를 경험해보세요.
+      </p>
+    </footer>
+  </body>
+</html>
