@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Iterable, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import trading
+from . import ai, trading
 from .schemas import (
     CandlePayload,
+    MarketAIResponse,
     LiveBalancesResponse,
     MarketCandlesResponse,
     MarketInsightsResponse,
@@ -17,8 +19,11 @@ from .schemas import (
     OrderMode,
     OrderRequest,
     OrderResponse,
+    PortfolioAssetInput,
     PortfolioBlueprintRequest,
     PortfolioBlueprintResponse,
+    PortfolioOptimizationRequest,
+    PortfolioOptimizationResponse,
     PaperBalancePayload,
     PaperMarkRequest,
     PaperOrderPayload,
@@ -63,6 +68,43 @@ app.add_middleware(
 
 
 _paper_broker: PaperBroker = paper_broker()
+
+
+def _news_items(entries: Iterable[dict]) -> list[NewsItem]:
+    items: list[NewsItem] = []
+    for entry in entries:
+        try:
+            items.append(
+                NewsItem(
+                    title=entry["title"],
+                    url=entry["url"],
+                    source=entry.get("source", ""),
+                    published_at=entry.get("published_at", ""),
+                )
+            )
+        except KeyError:
+            continue
+    return items
+
+
+def _convert_assets(assets: Optional[list[PortfolioAssetInput]]):
+    if not assets:
+        return None
+    converted = []
+    for asset in assets:
+        converted.append(
+            ai.PortfolioAsset(
+                symbol=asset.symbol.upper(),
+                name=asset.name or asset.symbol.upper(),
+                asset_type=asset.asset_type,
+                expected_return_pct=asset.expected_return_pct,
+                expected_volatility_pct=asset.expected_volatility_pct,
+                risk_score=asset.risk_score,
+                narrative=asset.narrative or "사용자 정의 자산",
+                market=asset.market.upper() if asset.market else None,
+            )
+        )
+    return converted
 
 
 def _serialize_position(position: PaperPosition) -> PaperPositionPayload:
@@ -237,6 +279,42 @@ def get_market_insights(
     return MarketInsightsResponse(source=data.source, **insights)
 
 
+@app.get("/ai/market/intelligence", response_model=MarketAIResponse)
+def get_market_intelligence(
+    market: str = "KRW-BTC", interval: str = "minute60", count: int = 180
+) -> MarketAIResponse:
+    market = market.upper()
+    try:
+        data = fetch_upbit_candles(market=market, interval=interval, count=count)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    headlines = fetch_authoritative_news(limit=5)
+    try:
+        insight = ai.analyse_market(
+            data.candles,
+            market=market,
+            interval=interval,
+            news=headlines,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return MarketAIResponse(
+        market=insight.market,
+        interval=insight.interval,
+        regime=insight.regime,
+        recommended_action=insight.recommended_action,
+        confidence_pct=insight.confidence_pct,
+        summary=insight.summary,
+        signals=insight.signals,
+        metrics=insight.metrics.__dict__,
+        risk=insight.risk.__dict__,
+        generated_at=insight.generated_at,
+        news=_news_items(insight.news),
+    )
+
+
 @app.get("/market/news", response_model=NewsResponse)
 def get_news(limit: int = 8) -> NewsResponse:
     items = [
@@ -250,6 +328,42 @@ def _paper_status_response() -> PaperStatusResponse:
     snapshot = _paper_broker.snapshot()
     balance = _serialize_balance(snapshot)
     return PaperStatusResponse(**balance.dict())
+
+
+@app.post("/ai/portfolio/optimize", response_model=PortfolioOptimizationResponse)
+def optimize_portfolio(payload: PortfolioOptimizationRequest) -> PortfolioOptimizationResponse:
+    custom_assets = _convert_assets(payload.custom_assets)
+
+    def _fetch_candles(market: str, interval: str, count: int):
+        result = fetch_upbit_candles(market=market, interval=interval, count=count)
+        return result.candles
+
+    try:
+        plan = ai.optimise_portfolio(
+            risk_appetite=payload.risk_appetite,
+            capital=payload.capital,
+            include_cash=payload.include_cash,
+            custom_assets=custom_assets,
+            preferred_markets=payload.preferred_markets,
+            candle_fetcher=_fetch_candles,
+        )
+    except (MarketDataError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PortfolioOptimizationResponse(
+        generated_at=plan.generated_at,
+        risk_profile_label=plan.risk_profile_label,
+        risk_appetite=plan.risk_appetite,
+        expected_return_pct=plan.expected_return_pct,
+        expected_volatility_pct=plan.expected_volatility_pct,
+        sharpe_estimate=plan.sharpe_estimate,
+        diversification_score_pct=plan.diversification_score_pct,
+        tail_risk_guard_pct=plan.tail_risk_guard_pct,
+        allocations=[allocation.__dict__ for allocation in plan.allocations],
+        hedging_notes=plan.hedging_notes,
+        methodology=plan.methodology,
+        market_briefings=plan.market_briefings,
+    )
 
 
 @app.post("/trading/order", response_model=OrderResponse)

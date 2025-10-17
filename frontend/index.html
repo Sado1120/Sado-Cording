@@ -129,6 +129,56 @@
         </div>
       </section>
 
+      <section class="panel panel--ai">
+        <header>
+          <h2>AI 시황 인텔리전스 & 자율 리스크 컨트롤</h2>
+          <span class="panel-subtitle">Sado Trade Bot이 실시간으로 시장을 해석하고 대응 전략을 제안합니다</span>
+        </header>
+        <div class="ai-grid">
+          <article class="ai-intel">
+            <div class="ai-intel__header">
+              <h3>AI 추천 전략</h3>
+              <button id="ai-refresh" class="btn btn--ghost btn--compact" type="button">AI 인텔리전스 새로고침</button>
+            </div>
+            <div class="ai-intel__stats">
+              <div>
+                <span>추천 액션</span>
+                <strong id="ai-action">데이터 대기</strong>
+              </div>
+              <div>
+                <span>신뢰도</span>
+                <strong id="ai-confidence">-</strong>
+              </div>
+              <div>
+                <span>시장 레짐</span>
+                <strong id="ai-regime">-</strong>
+              </div>
+            </div>
+            <p id="ai-summary" class="ai-intel__summary">AI 분석 요약이 여기에 표시됩니다.</p>
+            <ul id="ai-signals" class="ai-signals">
+              <li>AI 지표 샘플이 여기에 표시됩니다.</li>
+            </ul>
+            <div class="ai-risk">
+              <h4>리스크 컨트롤</h4>
+              <dl>
+                <div><dt>손절 제안</dt><dd id="ai-stop">-</dd></div>
+                <div><dt>목표 수익</dt><dd id="ai-take">-</dd></div>
+                <div><dt>트레일링</dt><dd id="ai-trailing">-</dd></div>
+                <div><dt>포지션 규모</dt><dd id="ai-size">-</dd></div>
+              </dl>
+              <p id="ai-risk-note" class="ai-risk__note">AI가 리스크 관리 코멘트를 여기에 표기합니다.</p>
+              <ul id="ai-risk-notes" class="ai-risk__list"></ul>
+            </div>
+          </article>
+          <article class="ai-news">
+            <h3>기관 뉴스 & 브리핑</h3>
+            <ul id="ai-news" class="ai-news__list">
+              <li class="ai-news__placeholder">AI가 권위 있는 기관 뉴스를 모니터링합니다.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
       <section class="panel panel--execution">
         <header>
           <h2>실거래 & 페이퍼 트레이딩 콘솔</h2>
@@ -494,6 +544,70 @@
           </label>
           <button class="btn btn--primary" type="submit">시뮬레이션 업데이트</button>
         </form>
+      </section>
+
+      <section class="panel panel--ai-portfolio">
+        <header>
+          <h2>AI 포트폴리오 아키텍트</h2>
+          <span class="panel-subtitle">AI가 ETF와 코인 비중을 자동 계산하여 리스크 대비 수익을 극대화합니다</span>
+        </header>
+        <div class="ai-portfolio-grid">
+          <form id="ai-portfolio-form" class="ai-portfolio-form">
+            <label class="control-field">
+              <span>투자 자본 (KRW)</span>
+              <input id="ai-capital" name="capital" type="number" value="10000000" min="100000" step="100000" />
+            </label>
+            <label class="control-field">
+              <span>위험 성향</span>
+              <input id="ai-risk" name="risk_appetite" type="range" min="0" max="1" step="0.05" value="0.5" />
+              <small id="ai-risk-label">균형형 (50%)</small>
+            </label>
+            <label class="control-field">
+              <span>선호 마켓 (쉼표로 구분)</span>
+              <input id="ai-preferred" name="preferred_markets" type="text" placeholder="KRW-BTC, KRW-ETH" />
+            </label>
+            <label class="control-checkbox">
+              <input id="ai-include-cash" name="include_cash" type="checkbox" checked />
+              <span>현금 / MMF 방어 비중 포함</span>
+            </label>
+            <button class="btn btn--accent" type="submit">AI 포트폴리오 생성</button>
+          </form>
+          <div class="ai-portfolio-output">
+            <article class="ai-portfolio-summary">
+              <h3>핵심 요약</h3>
+              <dl>
+                <div><dt>예상 연 수익률</dt><dd id="ai-expected-return">-</dd></div>
+                <div><dt>예상 연 변동성</dt><dd id="ai-expected-vol">-</dd></div>
+                <div><dt>샤프 지수</dt><dd id="ai-sharpe">-</dd></div>
+                <div><dt>다변화 점수</dt><dd id="ai-diversification">-</dd></div>
+                <div><dt>테일 리스크 가드</dt><dd id="ai-tail-risk">-</dd></div>
+              </dl>
+              <ul id="ai-hedges" class="ai-hedges"></ul>
+            </article>
+            <div class="ai-allocations">
+              <h3>자산 배분</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>티커</th>
+                    <th>자산 유형</th>
+                    <th>비중</th>
+                    <th>금액 (KRW)</th>
+                    <th>예상 수익률</th>
+                    <th>예상 변동성</th>
+                    <th>AI 논리</th>
+                  </tr>
+                </thead>
+                <tbody id="ai-allocations-body">
+                  <tr>
+                    <td colspan="7" class="ai-allocations__placeholder">AI 포트폴리오 결과가 여기에 표시됩니다.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="ai-briefings" class="ai-briefings">AI 시장 브리핑이 여기에 표시됩니다.</div>
       </section>
 
       <section class="panel panel--blueprint">

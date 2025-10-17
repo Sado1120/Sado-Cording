@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
 
-from backend.app import get_market_insights, get_news, get_upbit_candles
+from backend.app import (
+    get_market_insights,
+    get_market_intelligence,
+    get_news,
+    get_upbit_candles,
+    optimize_portfolio,
+)
 from backend.market import MarketData, build_market_insights, fetch_authoritative_news, fetch_upbit_candles
+from backend.schemas import PortfolioOptimizationRequest
 from backend.trading import Candle, generate_synthetic_prices
 
 
@@ -81,3 +88,32 @@ def test_market_endpoints(monkeypatch):
     )
     news_response = get_news()
     assert news_response.items
+
+
+def test_ai_endpoints(monkeypatch):
+    synthetic = generate_synthetic_prices(days=200, seed=99)
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=synthetic, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+    monkeypatch.setattr(
+        "backend.app.fetch_authoritative_news",
+        lambda limit=5: [
+            {
+                "title": "Authoritative Insight",
+                "url": "https://example.com",
+                "source": "Example",
+                "published_at": "Just now",
+            }
+        ],
+    )
+
+    ai_response = get_market_intelligence(market="KRW-BTC", interval="minute60")
+    assert ai_response.recommended_action
+    assert ai_response.metrics.rsi >= 0
+
+    request = PortfolioOptimizationRequest(risk_appetite=0.55, capital=15_000_000)
+    portfolio = optimize_portfolio(request)
+    assert portfolio.allocations
+    assert portfolio.expected_return_pct > 0

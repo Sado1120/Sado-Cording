@@ -103,6 +103,33 @@ const liveVolatilityEl = document.getElementById("live-volatility");
 const liveTrendEl = document.getElementById("live-trend");
 const liveActionEl = document.getElementById("live-action");
 const newsListEl = document.getElementById("news-list");
+const aiActionEl = document.getElementById("ai-action");
+const aiConfidenceEl = document.getElementById("ai-confidence");
+const aiRegimeEl = document.getElementById("ai-regime");
+const aiSummaryEl = document.getElementById("ai-summary");
+const aiSignalsEl = document.getElementById("ai-signals");
+const aiStopEl = document.getElementById("ai-stop");
+const aiTakeEl = document.getElementById("ai-take");
+const aiTrailingEl = document.getElementById("ai-trailing");
+const aiSizeEl = document.getElementById("ai-size");
+const aiRiskNoteEl = document.getElementById("ai-risk-note");
+const aiRiskNotesEl = document.getElementById("ai-risk-notes");
+const aiNewsEl = document.getElementById("ai-news");
+const aiRefreshBtn = document.getElementById("ai-refresh");
+const aiPortfolioForm = document.getElementById("ai-portfolio-form");
+const aiRiskSlider = document.getElementById("ai-risk");
+const aiRiskLabel = document.getElementById("ai-risk-label");
+const aiExpectedReturnEl = document.getElementById("ai-expected-return");
+const aiExpectedVolEl = document.getElementById("ai-expected-vol");
+const aiSharpeEl = document.getElementById("ai-sharpe");
+const aiDiversificationEl = document.getElementById("ai-diversification");
+const aiTailRiskEl = document.getElementById("ai-tail-risk");
+const aiHedgesEl = document.getElementById("ai-hedges");
+const aiAllocationsBody = document.getElementById("ai-allocations-body");
+const aiBriefingsEl = document.getElementById("ai-briefings");
+const aiIncludeCashEl = document.getElementById("ai-include-cash");
+const aiCapitalEl = document.getElementById("ai-capital");
+const aiPreferredEl = document.getElementById("ai-preferred");
 
 yearEl.textContent = new Date().getFullYear();
 
@@ -322,6 +349,7 @@ const refreshLiveMarket = async () => {
     const source = insightResponse.source || candleResponse.source;
     updateLiveInsights(insightResponse, source);
     await syncPaperWithLivePrice(market, insightResponse.latest_close, insightResponse.latest_timestamp, source);
+    refreshMarketIntelligence(market, interval).catch(() => {});
   } catch (error) {
     if (liveSummaryEl) {
       liveSummaryEl.textContent = error.message;
@@ -329,6 +357,190 @@ const refreshLiveMarket = async () => {
     if (liveSourceEl) {
       liveSourceEl.textContent = "연결 실패";
     }
+  }
+};
+
+const renderMarketIntelligence = (insight) => {
+  if (!aiActionEl) return;
+  aiActionEl.textContent = insight.recommended_action;
+  aiConfidenceEl.textContent = formatPercent(insight.confidence_pct);
+  aiRegimeEl.textContent = insight.regime;
+  aiSummaryEl.textContent = insight.summary;
+
+  if (aiSignalsEl) {
+    aiSignalsEl.innerHTML = "";
+    insight.signals.forEach((signal) => {
+      const li = document.createElement("li");
+      li.textContent = signal;
+      aiSignalsEl.appendChild(li);
+    });
+  }
+
+  if (aiStopEl) aiStopEl.textContent = formatPercent(insight.risk.stop_loss_pct);
+  if (aiTakeEl) aiTakeEl.textContent = formatPercent(insight.risk.take_profit_pct);
+  if (aiTrailingEl)
+    aiTrailingEl.textContent =
+      insight.risk.trailing_stop_pct !== null && insight.risk.trailing_stop_pct !== undefined
+        ? formatPercent(insight.risk.trailing_stop_pct)
+        : "-";
+  if (aiSizeEl) aiSizeEl.textContent = formatPercent(insight.risk.position_size_pct);
+  if (aiRiskNoteEl) aiRiskNoteEl.textContent = insight.risk.confidence_note;
+  if (aiRiskNotesEl) {
+    aiRiskNotesEl.innerHTML = "";
+    insight.risk.notes.forEach((note) => {
+      const li = document.createElement("li");
+      li.textContent = note;
+      aiRiskNotesEl.appendChild(li);
+    });
+  }
+
+  if (aiNewsEl) {
+    aiNewsEl.innerHTML = "";
+    if (!insight.news.length) {
+      const li = document.createElement("li");
+      li.className = "ai-news__placeholder";
+      li.textContent = "AI가 참고할 기관 뉴스가 없습니다.";
+      aiNewsEl.appendChild(li);
+    } else {
+      insight.news.forEach((item) => {
+        const li = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = item.url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = item.title;
+        const meta = document.createElement("span");
+        meta.className = "ai-news__meta";
+        meta.textContent = `${item.source} · ${item.published_at}`;
+        li.appendChild(link);
+        li.appendChild(meta);
+        aiNewsEl.appendChild(li);
+      });
+    }
+  }
+};
+
+const refreshMarketIntelligence = async (marketOverride, intervalOverride) => {
+  if (!aiActionEl) return;
+  const market = (marketOverride || liveMarketInput?.value || "KRW-BTC").trim().toUpperCase();
+  const interval = intervalOverride || liveIntervalSelect?.value || "minute60";
+  try {
+    const insight = await requestApi(
+      `/ai/market/intelligence?market=${encodeURIComponent(market)}&interval=${interval}&count=200`
+    );
+    renderMarketIntelligence(insight);
+  } catch (error) {
+    aiActionEl.textContent = "AI 분석 실패";
+    if (aiSummaryEl) aiSummaryEl.textContent = error.message;
+  }
+};
+
+const renderAiPortfolioPlan = (plan) => {
+  if (!aiExpectedReturnEl) return;
+  aiExpectedReturnEl.textContent = formatPercent(plan.expected_return_pct);
+  aiExpectedVolEl.textContent = formatPercent(plan.expected_volatility_pct);
+  aiSharpeEl.textContent = ratioFormatter.format(plan.sharpe_estimate);
+  aiDiversificationEl.textContent = formatPercent(plan.diversification_score_pct);
+  aiTailRiskEl.textContent = formatPercent(plan.tail_risk_guard_pct);
+
+  if (aiHedgesEl) {
+    aiHedgesEl.innerHTML = "";
+    plan.hedging_notes.forEach((note) => {
+      const li = document.createElement("li");
+      li.textContent = note;
+      aiHedgesEl.appendChild(li);
+    });
+  }
+
+  if (aiAllocationsBody) {
+    aiAllocationsBody.innerHTML = "";
+    if (!plan.allocations.length) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 7;
+      cell.className = "ai-allocations__placeholder";
+      cell.textContent = "AI 포트폴리오를 계산하지 못했습니다.";
+      row.appendChild(cell);
+      aiAllocationsBody.appendChild(row);
+    } else {
+      plan.allocations.forEach((allocation) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${allocation.symbol}</td>
+          <td>${allocation.asset_type}</td>
+          <td>${percentFormatter.format(allocation.weight * 100)}%</td>
+          <td>${formatCurrency(allocation.allocation_krw)}</td>
+          <td>${formatPercent(allocation.expected_return_pct)}</td>
+          <td>${formatPercent(allocation.expected_volatility_pct)}</td>
+          <td>${allocation.rationale}</td>
+        `;
+        aiAllocationsBody.appendChild(row);
+      });
+    }
+  }
+
+  if (aiBriefingsEl) {
+    if (!plan.market_briefings.length) {
+      aiBriefingsEl.innerHTML = '<p class="ai-briefings__placeholder">시장 브리핑이 없습니다.</p>';
+    } else {
+      const cards = plan.market_briefings
+        .map(
+          (item) => `
+            <article class="ai-briefing-card">
+              <header>
+                <h4>${item.market}</h4>
+                <span class="badge">${item.regime}</span>
+              </header>
+              <p class="ai-briefing-card__summary">${item.summary}</p>
+              <footer>
+                <span>권장 액션: <strong>${item.action}</strong></span>
+                <span>신뢰도 ${item.confidence_pct}%</span>
+              </footer>
+            </article>
+          `
+        )
+        .join("");
+      aiBriefingsEl.innerHTML = cards;
+    }
+  }
+};
+
+const handleAiPortfolio = async (event) => {
+  event?.preventDefault();
+  if (!aiPortfolioForm) return;
+
+  const capital = Number(aiCapitalEl?.value || 0);
+  if (!Number.isFinite(capital) || capital <= 0) {
+    alert("투자 자본을 올바르게 입력해주세요.");
+    return;
+  }
+
+  const riskAppetite = Number(aiRiskSlider?.value || 0.5);
+  const includeCash = aiIncludeCashEl ? aiIncludeCashEl.checked : true;
+  const preferredRaw = aiPreferredEl?.value || "";
+  const preferred = preferredRaw
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter((item) => item.length > 0);
+
+  const payload = {
+    risk_appetite: riskAppetite,
+    capital,
+    include_cash: includeCash,
+  };
+  if (preferred.length) {
+    payload.preferred_markets = preferred;
+  }
+
+  try {
+    const plan = await requestApi("/ai/portfolio/optimize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    renderAiPortfolioPlan(plan);
+  } catch (error) {
+    alert(error.message);
   }
 };
 
@@ -525,8 +737,20 @@ const riskDescriptors = [
 const updateRiskLabel = (value) => {
   if (!riskLabel) return;
   const numeric = Number(value);
-  const descriptor = riskDescriptors.find((item) => numeric <= item.threshold)?.label || "커스텀";
+  const descriptor = describeRiskLevel(numeric);
   riskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
+};
+
+const describeRiskLevel = (value) => {
+  const numeric = Number(value);
+  return riskDescriptors.find((item) => numeric <= item.threshold)?.label || "커스텀";
+};
+
+const updateAIRiskLabel = (value) => {
+  if (!aiRiskLabel) return;
+  const numeric = Number(value);
+  const descriptor = describeRiskLevel(numeric);
+  aiRiskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
 };
 
 const updateAlphaBriefing = (report) => {
@@ -1073,12 +1297,20 @@ if (riskSlider) {
   });
 }
 
+if (aiRiskSlider) {
+  updateAIRiskLabel(aiRiskSlider.value);
+  aiRiskSlider.addEventListener("input", (event) => {
+    updateAIRiskLabel(event.target.value);
+  });
+}
+
 document.getElementById("strategy-form")?.addEventListener("submit", handleSimulation);
 document.getElementById("simulate-btn")?.addEventListener("click", handleSimulation);
 document.getElementById("generate-data-btn")?.addEventListener("click", handleSyntheticData);
 document.getElementById("rebalance-btn")?.addEventListener("click", handleRebalance);
 document.getElementById("blueprint-form")?.addEventListener("submit", handleBlueprint);
 document.getElementById("blueprint-btn")?.addEventListener("click", handleBlueprint);
+aiPortfolioForm?.addEventListener("submit", handleAiPortfolio);
 orderForm?.addEventListener("submit", handleOrderSubmit);
 paperResetForm?.addEventListener("submit", handlePaperReset);
 paperRefreshBtn?.addEventListener("click", fetchPaperStatus);
@@ -1086,6 +1318,9 @@ paperMarkForm?.addEventListener("submit", handlePaperMark);
 liveBalanceBtn?.addEventListener("click", handleLiveBalance);
 liveRefreshBtn?.addEventListener("click", () => {
   refreshLiveMarket();
+});
+aiRefreshBtn?.addEventListener("click", () => {
+  refreshMarketIntelligence().catch(() => {});
 });
 liveIntervalSelect?.addEventListener("change", () => {
   refreshLiveMarket();
@@ -1101,9 +1336,14 @@ refreshApiStatus();
 fetchPaperStatus();
 handleSimulation().catch(() => {});
 refreshLiveMarket().catch(() => {});
+refreshMarketIntelligence().catch(() => {});
+handleAiPortfolio().catch(() => {});
 refreshNews().catch(() => {});
 setInterval(() => {
   refreshLiveMarket().catch(() => {});
+}, 60_000);
+setInterval(() => {
+  refreshMarketIntelligence().catch(() => {});
 }, 60_000);
 setInterval(() => {
   refreshNews().catch(() => {});

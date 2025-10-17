@@ -123,6 +123,135 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
+.panel--ai .ai-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.ai-intel,
+.ai-news,
+.ai-portfolio-output {
+  background: rgba(122, 225, 255, 0.05);
+  border: 1px solid rgba(122, 225, 255, 0.12);
+  border-radius: 20px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.ai-intel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ai-intel__stats {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ai-intel__stats div {
+  background: rgba(10, 17, 36, 0.35);
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ai-intel__stats span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.ai-intel__stats strong {
+  font-size: 1.2rem;
+}
+
+.ai-intel__summary {
+  background: rgba(10, 17, 36, 0.3);
+  border-radius: 16px;
+  padding: 1.1rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.ai-signals {
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+  padding-left: 0;
+}
+
+.ai-signals li {
+  background: rgba(10, 17, 36, 0.35);
+  border-radius: 14px;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+}
+
+.ai-risk h4 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-risk dl {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ai-risk dt {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.ai-risk__note {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.ai-risk__list {
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+}
+
+.ai-risk__list li::before {
+  content: "•";
+  margin-right: 0.5rem;
+  color: var(--accent);
+}
+
+.ai-news__list {
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+}
+
+.ai-news__list li a {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ai-news__list li a:hover {
+  color: var(--accent);
+}
+
+.ai-news__meta {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.35rem;
+}
+
 .live-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -813,4 +942,113 @@ tbody tr:hover {
   .btn--compact {
     width: 100%;
   }
+}
+.panel--ai-portfolio .ai-portfolio-grid {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.ai-portfolio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: rgba(10, 17, 36, 0.35);
+  border-radius: 20px;
+  padding: 1.5rem;
+  border: 1px solid rgba(122, 225, 255, 0.1);
+}
+
+.control-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.ai-portfolio-summary dl {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ai-portfolio-summary dt {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.ai-hedges {
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+}
+
+.ai-hedges li::before {
+  content: "•";
+  margin-right: 0.45rem;
+  color: var(--accent-strong);
+}
+
+.ai-allocations table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.ai-allocations th,
+.ai-allocations td {
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid rgba(122, 225, 255, 0.15);
+  text-align: left;
+}
+
+.ai-allocations__placeholder {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 1.5rem 0;
+}
+
+.ai-briefings {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.ai-briefing-card {
+  background: rgba(10, 17, 36, 0.4);
+  border: 1px solid rgba(122, 225, 255, 0.12);
+  border-radius: 18px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ai-briefing-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ai-briefing-card__summary {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.ai-briefing-card footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.ai-briefings__placeholder {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-secondary);
 }

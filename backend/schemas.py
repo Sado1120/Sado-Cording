@@ -293,3 +293,101 @@ class NewsItem(BaseModel):
 class NewsResponse(BaseModel):
     generated_at: datetime
     items: List[NewsItem]
+
+
+class MarketAIMetricsPayload(BaseModel):
+    fast_ema: float
+    slow_ema: float
+    rsi: float
+    macd: float
+    macd_signal: float
+    macd_histogram: float
+    volatility_pct: float
+    trend_strength: float
+    regime_score: float
+    probability_of_trend: float
+    price_change_pct: float
+    support_level: float
+    resistance_level: float
+
+
+class RiskControlAdvicePayload(BaseModel):
+    stop_loss_pct: float
+    take_profit_pct: float
+    trailing_stop_pct: Optional[float]
+    position_size_pct: float
+    confidence_note: str
+    notes: List[str]
+
+
+class MarketAIResponse(BaseModel):
+    market: str
+    interval: str
+    regime: str
+    recommended_action: str
+    confidence_pct: float
+    summary: str
+    signals: List[str]
+    metrics: MarketAIMetricsPayload
+    risk: RiskControlAdvicePayload
+    generated_at: datetime
+    news: List[NewsItem]
+
+
+class PortfolioAssetInput(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    name: Optional[str] = None
+    asset_type: Literal["etf", "crypto", "cash", "other"] = "crypto"
+    expected_return_pct: float = Field(..., ge=-100, le=500)
+    expected_volatility_pct: float = Field(..., gt=0, le=1000)
+    risk_score: float = Field(..., ge=0, le=1)
+    narrative: Optional[str] = Field(
+        None, description="Allocation rationale such as factor exposure or thesis"
+    )
+    market: Optional[str] = Field(
+        None, description="Upbit market ticker (e.g. KRW-BTC) for live analysis"
+    )
+
+
+class PortfolioAIAllocation(BaseModel):
+    symbol: str
+    name: str
+    asset_type: str
+    weight: float
+    allocation_krw: float
+    expected_return_pct: float
+    expected_volatility_pct: float
+    rationale: str
+
+
+class MarketBriefingPayload(BaseModel):
+    market: str
+    regime: str
+    action: str
+    confidence_pct: str
+    summary: str
+
+
+class PortfolioOptimizationRequest(BaseModel):
+    risk_appetite: float = Field(0.5, ge=0, le=1)
+    capital: float = Field(10_000_000, gt=0)
+    include_cash: bool = True
+    preferred_markets: Optional[List[str]] = None
+    custom_assets: Optional[List[PortfolioAssetInput]] = Field(
+        None, description="Custom asset universe overriding the default AI library"
+    )
+
+
+class PortfolioOptimizationResponse(BaseModel):
+    generated_at: datetime
+    risk_profile_label: str
+    risk_appetite: float
+    expected_return_pct: float
+    expected_volatility_pct: float
+    sharpe_estimate: float
+    diversification_score_pct: float
+    tail_risk_guard_pct: float
+    allocations: List[PortfolioAIAllocation]
+    hedging_notes: List[str]
+    methodology: str
+    market_briefings: List[MarketBriefingPayload]
