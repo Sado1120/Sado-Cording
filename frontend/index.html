@@ -3,11 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Language" content="ko" />
     <title>ILJIN Copilot Control Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.css"
+      crossorigin="anonymous"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -31,6 +38,124 @@
     </header>
 
     <main class="dashboard">
+      <section class="panel panel--system">
+        <header>
+          <h2>운영 상태 모니터</h2>
+          <span class="panel-subtitle">Synology 컨테이너 8501 포트 전용 엔드포인트 제어</span>
+        </header>
+        <div class="system-grid">
+          <article class="system-card">
+            <span class="metric-label">API 엔드포인트</span>
+            <div class="api-config">
+              <input id="api-endpoint" type="text" placeholder="http://127.0.0.1:8000" />
+              <button id="api-refresh" class="btn btn--ghost btn--compact" type="button">상태 확인</button>
+            </div>
+            <span id="api-status" class="status-pill" data-status="loading">확인 필요</span>
+          </article>
+          <article class="system-card system-card--description">
+            <h3>대시보드 포트 8501 운영 가이드</h3>
+            <p>
+              Synology 컨테이너 매니저에서는 이 대시보드를 <code>8501</code> 포트에 매핑하고,
+              FastAPI 백엔드는 <code>8000</code> 포트에서 기동하세요. 좌측 카드에서 연결 상태를 실시간으로 검증합니다.
+            </p>
+            <p>
+              설비 고장 Copilot UI 스타일을 그대로 적용해 공장 설비와 자동매매 현황을 한 화면에서 모니터링할 수 있도록 디자인했습니다.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--execution">
+        <header>
+          <h2>실거래 & 페이퍼 트레이딩 콘솔</h2>
+          <span class="panel-subtitle">업비트 실거래 주문과 가상 계좌 백테스트를 한 화면에서 제어</span>
+        </header>
+        <div class="execution-grid">
+          <form id="order-form" class="execution-form">
+            <div class="mode-toggle">
+              <label class="mode-option">
+                <input type="radio" name="order-mode" value="paper" checked />
+                <span>페이퍼 트레이딩</span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="order-mode" value="live" />
+                <span>실거래 (Upbit)</span>
+              </label>
+            </div>
+            <div class="execution-fields">
+              <label class="control-field">
+                <span>마켓 (예: KRW-BTC)</span>
+                <input type="text" name="market" value="KRW-BTC" required />
+              </label>
+              <label class="control-field">
+                <span>매매 방향</span>
+                <select name="side">
+                  <option value="bid">매수 (Bid)</option>
+                  <option value="ask">매도 (Ask)</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>주문 유형</span>
+                <select name="ord_type">
+                  <option value="limit">지정가 (limit)</option>
+                  <option value="market">시장가 (market)</option>
+                  <option value="price">금액지정 (price)</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>가격</span>
+                <input type="number" name="price" step="0.0001" min="0" placeholder="시장가 주문 시 생략" />
+              </label>
+              <label class="control-field">
+                <span>수량</span>
+                <input type="number" name="volume" step="0.0001" min="0.0001" value="0.01" required />
+              </label>
+            </div>
+            <button class="btn btn--primary" type="submit">주문 실행</button>
+            <p class="form-helper">실거래 모드는 환경 변수의 Upbit API 키가 올바르게 설정된 경우에만 동작합니다.</p>
+          </form>
+
+          <div class="execution-insights">
+            <article class="status-card">
+              <h3>실행 결과</h3>
+              <pre id="order-result">주문을 실행하면 응답이 여기에 표시됩니다.</pre>
+            </article>
+            <article class="status-card">
+              <div class="status-card__header">
+                <h3>페이퍼 계좌 현황</h3>
+                <div class="status-actions">
+                  <button id="paper-refresh-btn" class="btn btn--ghost btn--compact" type="button">새로고침</button>
+                </div>
+              </div>
+              <form id="paper-reset-form" class="inline-form">
+                <label>
+                  초기 자본 (KRW)
+                  <input id="paper-initial-cash" type="number" value="50000000" min="1000000" step="100000" />
+                </label>
+                <button class="btn btn--accent btn--compact" type="submit">계좌 리셋</button>
+              </form>
+              <form id="paper-mark-form" class="inline-form">
+                <label>
+                  마켓
+                  <input id="paper-mark-market" type="text" placeholder="KRW-BTC" />
+                </label>
+                <label>
+                  시세 (KRW)
+                  <input id="paper-mark-price" type="number" step="0.0001" min="0" placeholder="31000000" />
+                </label>
+                <button class="btn btn--ghost btn--compact" type="submit">시세 반영</button>
+              </form>
+              <div id="paper-summary" class="paper-summary">계좌 리셋 또는 주문 실행 후 요약이 표시됩니다.</div>
+            </article>
+            <article class="status-card">
+              <h3>실거래 잔고 (Upbit)</h3>
+              <button id="live-balance-btn" class="btn btn--ghost btn--compact" type="button">잔고 조회</button>
+              <pre id="live-balance-output">API 키 설정 후 잔고를 조회하세요.</pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="panel panel--metrics">
         <header>
           <h2>핵심 지표</h2>
@@ -58,7 +183,130 @@
               <span id="metric-trade-count">0건</span>
               <span id="metric-trade-winrate">승률 0.0%</span>
               <span id="metric-trade-avg">평균 0.0%</span>
+              <span id="metric-trade-expectancy">기대 0.0%</span>
+              <span id="metric-trade-median">중앙값 0.0%</span>
+              <span id="metric-trade-winloss">승패비 0.00</span>
+              <span id="metric-trade-best">최대수익 0.0%</span>
+              <span id="metric-trade-worst">최대손실 0.0%</span>
             </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--risk">
+        <header>
+          <h2>전문가 리스크 패널</h2>
+          <span class="panel-subtitle">변동성부터 노출시간까지, 투자위원회용 리포트</span>
+        </header>
+        <div class="metric-grid metric-grid--dense">
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">연간 변동성</span>
+            <strong id="metric-volatility" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">위험 대비 포지션 진폭</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">샤프 비율</span>
+            <strong id="metric-sharpe" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">위험 대비 수익</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">소르티노 비율</span>
+            <strong id="metric-sortino" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">하락 리스크만 고려</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">칼마 비율</span>
+            <strong id="metric-calmar" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">낙폭 대비 수익</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">95% VaR</span>
+            <strong id="metric-var" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">손실 한계 추정</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">노출 시간</span>
+            <strong id="metric-exposure" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">시장 체류 비중</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">프로핏 팩터</span>
+            <strong id="metric-profit-factor" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">이익/손실 비율</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">기대 수익률</span>
+            <strong id="metric-expectancy" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">거래당 기대값</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 보유</span>
+            <strong id="metric-hold" class="metric-value metric-value--compact">0.0봉</strong>
+            <span class="metric-subtext">전략 체류 기간</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">울서 지수</span>
+            <strong id="metric-ulcer" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">심리적 낙폭 스트레스</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">다운사이드 변동성</span>
+            <strong id="metric-downside" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">하락 전용 표준편차</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">회복 계수</span>
+            <strong id="metric-recovery" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">수익률 대비 낙폭</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 승률</span>
+            <strong id="metric-avg-win" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">이기는 거래 평균</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 손실률</span>
+            <strong id="metric-avg-loss" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">지는 거래 평균</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">승패 비율</span>
+            <strong id="metric-winloss" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">리스크/리워드</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">테일 비율</span>
+            <strong id="metric-tail" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">꼬리 위험 대비 기회</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--monte">
+        <header>
+          <h2>몬테카를로 스트레스 테스트</h2>
+          <span class="panel-subtitle">거래 리턴을 부트스트랩하여 최악/최선/중앙 시나리오 추정</span>
+        </header>
+        <div class="monte-grid">
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">중앙값 시나리오</span>
+            <strong id="metric-mc-median" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">부트스트랩 50% 지점</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">5% 최악</span>
+            <strong id="metric-mc-p05" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">극단 손실 경계</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">95% 최선</span>
+            <strong id="metric-mc-p95" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">상단 가능 구간</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 시나리오</span>
+            <strong id="metric-mc-avg" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">부트스트랩 기대값</span>
           </article>
         </div>
       </section>
@@ -94,6 +342,22 @@
             <input type="number" name="fee_rate" min="0" max="0.01" step="0.0001" value="0.0005" />
           </label>
           <label class="control-field">
+            <span>거래당 위험 (자본%)</span>
+            <input type="number" name="risk_per_trade_pct" min="0.001" max="1" step="0.005" value="0.02" />
+          </label>
+          <label class="control-field">
+            <span>스톱로스 폭 (비율)</span>
+            <input type="number" name="stop_loss_pct" min="0.005" max="0.5" step="0.005" value="0.03" />
+          </label>
+          <label class="control-field">
+            <span>테이크프로핏 (비율)</span>
+            <input type="number" name="take_profit_pct" min="0.01" max="1.5" step="0.01" placeholder="선택" />
+          </label>
+          <label class="control-field">
+            <span>트레일링 스톱 (비율)</span>
+            <input type="number" name="trailing_stop_pct" min="0.01" max="0.5" step="0.005" placeholder="선택" />
+          </label>
+          <label class="control-field">
             <span>랜덤 시드</span>
             <input type="number" name="seed" min="1" step="1" placeholder="선택" />
           </label>
@@ -101,10 +365,55 @@
         </form>
       </section>
 
+      <section class="panel panel--blueprint">
+        <header>
+          <h2>위험 프로파일 기반 포트폴리오 설계</h2>
+          <span class="panel-subtitle">안정형 미국 ETF와 공격형 코인을 한 번에 설계하는 듀얼 버킷 모델</span>
+        </header>
+        <form id="blueprint-form" class="blueprint-form">
+          <div class="blueprint-controls">
+            <label class="control-field">
+              <span>투자 자본 (KRW)</span>
+              <input id="blueprint-capital" type="number" value="10000000" step="100000" min="100000" />
+            </label>
+            <label class="control-field blueprint-slider">
+              <span>위험 프로파일</span>
+              <input id="blueprint-risk" type="range" min="0" max="1" step="0.1" value="0.5" />
+              <small id="blueprint-risk-label">균형형 (50.00%)</small>
+            </label>
+            <button id="blueprint-btn" class="btn btn--accent" type="submit">블루프린트 생성</button>
+          </div>
+          <div class="blueprint-grid">
+            <div>
+              <h3>안정 자산 (미국 ETF)</h3>
+              <textarea
+                id="blueprint-stable"
+                placeholder='[
+  {"symbol": "BND", "weight": 0.6, "expected_return_pct": 4.2, "expected_volatility_pct": 5.5},
+  {"symbol": "JEPI", "weight": 0.4, "expected_return_pct": 6.1, "expected_volatility_pct": 7.0}
+]'
+              ></textarea>
+            </div>
+            <div>
+              <h3>공격 자산 (디지털 자산)</h3>
+              <textarea
+                id="blueprint-aggressive"
+                placeholder='[
+  {"symbol": "BTC", "weight": 0.5, "expected_return_pct": 35, "expected_volatility_pct": 65},
+  {"symbol": "ETH", "weight": 0.3, "expected_return_pct": 28, "expected_volatility_pct": 55},
+  {"symbol": "SOL", "weight": 0.2, "expected_return_pct": 45, "expected_volatility_pct": 80}
+]'
+              ></textarea>
+            </div>
+          </div>
+        </form>
+        <div id="blueprint-output" class="blueprint-output">위험 프로파일과 자산 구성을 입력하면 설계 결과가 여기에 표시됩니다.</div>
+      </section>
+
       <section class="panel panel--portfolio">
         <header>
           <h2>포트폴리오 리밸런싱</h2>
-          <span class="panel-subtitle">안정/공격 비중을 스마트하게 맞춰드립니다</span>
+          <span class="panel-subtitle">블루프린트 결과를 목표 비중에 반영해 실거래 플랜을 준비하세요</span>
         </header>
         <div class="portfolio-grid">
           <div>
@@ -142,6 +451,8 @@
                 <th>수량</th>
                 <th>PnL (KRW)</th>
                 <th>수익률</th>
+                <th>보유 봉수</th>
+                <th>청산 사유</th>
               </tr>
             </thead>
             <tbody id="trade-table"></tbody>
