@@ -130,6 +130,30 @@ const aiBriefingsEl = document.getElementById("ai-briefings");
 const aiIncludeCashEl = document.getElementById("ai-include-cash");
 const aiCapitalEl = document.getElementById("ai-capital");
 const aiPreferredEl = document.getElementById("ai-preferred");
+const copilotForm = document.getElementById("copilot-form");
+const copilotQuestionInput = document.getElementById("copilot-question");
+const copilotRiskSlider = document.getElementById("copilot-risk");
+const copilotRiskLabel = document.getElementById("copilot-risk-label");
+const copilotCapitalInput = document.getElementById("copilot-capital");
+const copilotIncludePortfolioInput = document.getElementById("copilot-include-portfolio");
+const copilotAnswerEl = document.getElementById("copilot-answer");
+const copilotSummaryEl = document.getElementById("copilot-summary");
+const copilotActionsEl = document.getElementById("copilot-actions");
+const copilotRiskNoticesEl = document.getElementById("copilot-risk-notices");
+const copilotHighlightsEl = document.getElementById("copilot-highlights");
+const autopilotBiasEl = document.getElementById("autopilot-bias");
+const autopilotSideEl = document.getElementById("autopilot-side");
+const autopilotConfidenceEl = document.getElementById("autopilot-confidence");
+const autopilotSizeEl = document.getElementById("autopilot-size");
+const autopilotStopsEl = document.getElementById("autopilot-stops");
+const autopilotTrailingEl = document.getElementById("autopilot-trailing");
+const autopilotReasoningEl = document.getElementById("autopilot-reasoning");
+const autopilotMonitoringEl = document.getElementById("autopilot-monitoring");
+const copilotLogEl = document.getElementById("copilot-log");
+
+if (copilotQuestionInput && !copilotQuestionInput.value) {
+  copilotQuestionInput.value = "지금 시장 전략을 요약해줘";
+}
 
 yearEl.textContent = new Date().getFullYear();
 
@@ -185,6 +209,32 @@ const formatRelativeTime = (date) => {
   if (hours < 24) return `${hours}시간 전`;
   const days = Math.floor(hours / 24);
   return `${days}일 전`;
+};
+
+const renderList = (element, items, placeholder) => {
+  if (!element) return;
+  element.innerHTML = "";
+  if (!items || !items.length) {
+    const li = document.createElement("li");
+    li.className = "copilot-list__placeholder";
+    li.textContent = placeholder;
+    element.appendChild(li);
+    return;
+  }
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    element.appendChild(li);
+  });
+};
+
+const updateCopilotRiskLabel = (value) => {
+  if (!copilotRiskLabel) return;
+  const numeric = Number(value);
+  let profile = "균형형";
+  if (numeric <= 0.3) profile = "안정형";
+  else if (numeric >= 0.7) profile = "공격형";
+  copilotRiskLabel.textContent = `${profile} (${numeric.toFixed(2)})`;
 };
 
 const updatePaperHeartbeat = (balance) => {
@@ -432,6 +482,120 @@ const refreshMarketIntelligence = async (marketOverride, intervalOverride) => {
   } catch (error) {
     aiActionEl.textContent = "AI 분석 실패";
     if (aiSummaryEl) aiSummaryEl.textContent = error.message;
+  }
+};
+
+const setAutopilotBadge = (bias) => {
+  if (!autopilotBiasEl) return;
+  autopilotBiasEl.classList.remove("badge--long", "badge--short", "badge--neutral");
+  let label = "대기";
+  let badgeClass = "badge--neutral";
+  if (bias === "long") {
+    label = "롱 바이어스";
+    badgeClass = "badge--long";
+  } else if (bias === "short") {
+    label = "숏 바이어스";
+    badgeClass = "badge--short";
+  }
+  autopilotBiasEl.classList.add(badgeClass);
+  autopilotBiasEl.textContent = label;
+};
+
+const renderAutopilotPlan = (plan) => {
+  if (!plan || !autopilotSideEl) return;
+  setAutopilotBadge(plan.bias);
+  autopilotSideEl.textContent =
+    plan.side === "bid" ? "매수" : plan.side === "ask" ? "매도" : "관망";
+  autopilotConfidenceEl.textContent = formatPercent(plan.confidence_pct);
+  autopilotSizeEl.textContent = plan.position_size_pct
+    ? formatPercent(plan.position_size_pct)
+    : "-";
+  const stopLoss = plan.stop_loss_pct ? formatPercent(plan.stop_loss_pct) : "-";
+  const takeProfit = plan.take_profit_pct ? formatPercent(plan.take_profit_pct) : "-";
+  autopilotStopsEl.textContent = `${stopLoss} / ${takeProfit}`;
+  autopilotTrailingEl.textContent =
+    plan.trailing_stop_pct !== null && plan.trailing_stop_pct !== undefined
+      ? formatPercent(plan.trailing_stop_pct)
+      : "-";
+  renderList(autopilotReasoningEl, plan.reasoning, "근거 데이터가 없습니다.");
+  renderList(autopilotMonitoringEl, plan.monitoring, "모니터링 항목이 비어 있습니다.");
+};
+
+const appendCopilotLog = (payload) => {
+  if (!copilotLogEl) return;
+  const time = new Date(payload.generated_at);
+  const entry = document.createElement("li");
+  entry.className = "copilot-log__entry";
+  const headline = payload.summary_points?.[0] || payload.answer;
+  entry.innerHTML = `
+    <time>${formatDateTime(time)}</time>
+    <span>${headline}</span>
+  `;
+  if (copilotLogEl.firstElementChild?.classList.contains("copilot-log__placeholder")) {
+    copilotLogEl.innerHTML = "";
+  }
+  copilotLogEl.prepend(entry);
+  const maxEntries = 6;
+  while (copilotLogEl.children.length > maxEntries) {
+    copilotLogEl.removeChild(copilotLogEl.lastElementChild);
+  }
+};
+
+const renderCopilotResponse = (payload) => {
+  if (!payload) return;
+  if (copilotAnswerEl) {
+    copilotAnswerEl.textContent = payload.answer;
+  }
+  renderList(copilotSummaryEl, payload.summary_points, "요약 정보가 없습니다.");
+  renderList(copilotActionsEl, payload.action_items, "실행 항목이 없습니다.");
+  renderList(copilotRiskNoticesEl, payload.risk_notices, "리스크 주의가 없습니다.");
+  renderList(copilotHighlightsEl, payload.highlights, "포트폴리오 하이라이트가 없습니다.");
+  renderAutopilotPlan(payload.autopilot);
+  if (payload.insight) {
+    renderMarketIntelligence(payload.insight);
+  }
+  appendCopilotLog(payload);
+};
+
+const handleCopilot = async (event) => {
+  event?.preventDefault();
+  if (!copilotForm) return;
+
+  const question = copilotQuestionInput?.value.trim();
+  if (!question) {
+    if (copilotAnswerEl) {
+      copilotAnswerEl.textContent = "먼저 코파일럿에게 질문을 입력해주세요.";
+    }
+    return;
+  }
+
+  const selectedMode = document.querySelector('input[name="order-mode"]:checked')?.value || "paper";
+  const market = (liveMarketInput?.value || "KRW-BTC").trim().toUpperCase();
+  const interval = liveIntervalSelect?.value || "minute60";
+  const riskAppetite = Number(copilotRiskSlider?.value || 0.55);
+  const capital = Number(copilotCapitalInput?.value || 0);
+
+  const body = {
+    question,
+    market,
+    interval,
+    mode: selectedMode,
+    risk_appetite: Number.isFinite(riskAppetite) ? riskAppetite : 0.55,
+    capital: Number.isFinite(capital) && capital > 0 ? capital : 20_000_000,
+    include_portfolio: copilotIncludePortfolioInput ? copilotIncludePortfolioInput.checked : true,
+  };
+
+  try {
+    const response = await requestApi("/ai/copilot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    renderCopilotResponse(response);
+  } catch (error) {
+    if (copilotAnswerEl) {
+      copilotAnswerEl.textContent = `코파일럿 분석 실패: ${error.message}`;
+    }
   }
 };
 
@@ -1304,6 +1468,13 @@ if (aiRiskSlider) {
   });
 }
 
+if (copilotRiskSlider) {
+  updateCopilotRiskLabel(copilotRiskSlider.value);
+  copilotRiskSlider.addEventListener("input", (event) => {
+    updateCopilotRiskLabel(event.target.value);
+  });
+}
+
 document.getElementById("strategy-form")?.addEventListener("submit", handleSimulation);
 document.getElementById("simulate-btn")?.addEventListener("click", handleSimulation);
 document.getElementById("generate-data-btn")?.addEventListener("click", handleSyntheticData);
@@ -1311,6 +1482,7 @@ document.getElementById("rebalance-btn")?.addEventListener("click", handleRebala
 document.getElementById("blueprint-form")?.addEventListener("submit", handleBlueprint);
 document.getElementById("blueprint-btn")?.addEventListener("click", handleBlueprint);
 aiPortfolioForm?.addEventListener("submit", handleAiPortfolio);
+copilotForm?.addEventListener("submit", handleCopilot);
 orderForm?.addEventListener("submit", handleOrderSubmit);
 paperResetForm?.addEventListener("submit", handlePaperReset);
 paperRefreshBtn?.addEventListener("click", fetchPaperStatus);
@@ -1339,6 +1511,7 @@ refreshLiveMarket().catch(() => {});
 refreshMarketIntelligence().catch(() => {});
 handleAiPortfolio().catch(() => {});
 refreshNews().catch(() => {});
+handleCopilot().catch(() => {});
 setInterval(() => {
   refreshLiveMarket().catch(() => {});
 }, 60_000);

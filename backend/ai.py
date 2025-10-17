@@ -95,6 +95,37 @@ class PortfolioAIPlan:
     market_briefings: List[Dict[str, str]]
 
 
+@dataclass
+class AutoPilotOrderPlan:
+    """Structured auto-trading instruction returned by the AI copilot."""
+
+    market: str
+    side: str
+    bias: str
+    order_type: str
+    suggested_price: Optional[float]
+    position_size_pct: float
+    stop_loss_pct: float
+    take_profit_pct: Optional[float]
+    trailing_stop_pct: Optional[float]
+    confidence_pct: float
+    reasoning: List[str]
+    monitoring: List[str]
+
+
+@dataclass
+class CopilotSynthesis:
+    """Rich conversational answer generated for the copilot endpoint."""
+
+    answer: str
+    summary_points: List[str]
+    risk_notices: List[str]
+    action_items: List[str]
+    highlights: List[str]
+    autopilot: AutoPilotOrderPlan
+    generated_at: datetime
+
+
 _MIN_CANDLES = 30
 
 _ANNUALISATION_FACTORS = {
@@ -512,4 +543,171 @@ def optimise_portfolio(
         hedging_notes=hedging_notes,
         methodology="AI 리스크 버짓팅 + 추세 스코어 조정",
         market_briefings=briefings,
+    )
+
+
+def _derive_trade_bias(insight: MarketAIInsight) -> str:
+    if "매수" in insight.recommended_action or "추세" in insight.recommended_action:
+        return "long"
+    if "매도" in insight.recommended_action or "청산" in insight.recommended_action:
+        return "short"
+    return "neutral"
+
+
+def craft_autopilot_plan(
+    *,
+    insight: MarketAIInsight,
+    risk_appetite: float,
+    capital: float,
+    mode: str,
+    portfolio_plan: Optional[PortfolioAIPlan] = None,
+) -> AutoPilotOrderPlan:
+    """Translate market insight into a structured trading plan."""
+
+    bias = _derive_trade_bias(insight)
+    side = "bid" if bias == "long" else "ask" if bias == "short" else "flat"
+
+    # Position sizing blends the AI risk guidance with the user's risk appetite.
+    base_position = insight.risk.position_size_pct
+    scaled_position = base_position * max(0.4, risk_appetite + 0.2)
+    position_size_pct = max(0.5, min(15.0, scaled_position))
+
+    confidence_pct = max(5.0, min(99.0, insight.confidence_pct))
+
+    order_type = "market" if confidence_pct >= 60 else "limit"
+    suggested_price = None
+
+    if bias == "neutral":
+        order_type = "monitor"
+        position_size_pct = 0.0
+
+    risk = insight.risk
+
+    support_level = insight.metrics.support_level
+    resistance_level = insight.metrics.resistance_level
+
+    monitoring: List[str] = [
+        f"지지선 {support_level:,.0f}" if support_level else "지지선 데이터 부족",
+        f"저항선 {resistance_level:,.0f}" if resistance_level else "저항선 데이터 부족",
+        f"연환산 변동성 {insight.metrics.volatility_pct:.2f}%",
+    ]
+
+    reasoning = [
+        f"EMA 격차 {insight.metrics.trend_strength * 100:.2f}%",  # trend indication
+        f"RSI {insight.metrics.rsi:.1f}",
+        f"MACD 히스토그램 {insight.metrics.macd_histogram:.3f}",
+    ]
+
+    if portfolio_plan:
+        top_allocation = max(portfolio_plan.allocations, key=lambda item: item.weight, default=None)
+        if top_allocation:
+            reasoning.append(
+                f"포트폴리오 핵심 배분: {top_allocation.symbol} {top_allocation.weight * 100:.1f}%"
+            )
+
+    if bias == "short" and insight.metrics.price_change_pct > 0:
+        reasoning.append("최근 상승폭을 활용한 차익 실현 구간")
+    elif bias == "long" and insight.metrics.price_change_pct < 0:
+        reasoning.append("조정 구간 매수 기회")
+
+    position_value = capital * (position_size_pct / 100) if position_size_pct else 0.0
+    if position_value:
+        monitoring.append(f"권장 포지션 규모 약 {position_value:,.0f} KRW")
+
+    monitoring.extend(risk.notes)
+
+    return AutoPilotOrderPlan(
+        market=insight.market,
+        side=side,
+        bias=bias,
+        order_type=order_type,
+        suggested_price=suggested_price,
+        position_size_pct=position_size_pct,
+        stop_loss_pct=max(0.5, risk.stop_loss_pct),
+        take_profit_pct=risk.take_profit_pct,
+        trailing_stop_pct=risk.trailing_stop_pct,
+        confidence_pct=confidence_pct,
+        reasoning=reasoning,
+        monitoring=monitoring,
+    )
+
+
+def generate_copilot_synthesis(
+    *,
+    question: str,
+    insight: MarketAIInsight,
+    autopilot: AutoPilotOrderPlan,
+    portfolio_plan: Optional[PortfolioAIPlan],
+    mode: str,
+) -> CopilotSynthesis:
+    """Create a conversational style answer for the copilot endpoint."""
+
+    summary_points = [
+        f"{insight.market} {insight.interval} · {insight.regime} ({insight.confidence_pct:.1f}% 신뢰도)",
+        f"EMA {insight.metrics.fast_ema:,.0f}/{insight.metrics.slow_ema:,.0f} · RSI {insight.metrics.rsi:.1f}",
+        f"연환산 변동성 {insight.metrics.volatility_pct:.2f}% · 최근 변화 {insight.metrics.price_change_pct:.2f}%",
+    ]
+
+    highlights: List[str] = []
+    if portfolio_plan:
+        sorted_allocations = sorted(
+            portfolio_plan.allocations,
+            key=lambda allocation: allocation.weight,
+            reverse=True,
+        )
+        for allocation in sorted_allocations[:3]:
+            highlights.append(
+                f"{allocation.symbol} {allocation.weight * 100:.1f}% · 기대수익 {allocation.expected_return_pct:.1f}%"
+            )
+        if portfolio_plan.hedging_notes:
+            highlights.append(portfolio_plan.hedging_notes[0])
+
+    action_items = []
+    if autopilot.side != "flat":
+        action_items.append(
+            f"{autopilot.market} {('매수' if autopilot.side == 'bid' else '매도')} · 포지션 {autopilot.position_size_pct:.1f}%"
+        )
+        if autopilot.stop_loss_pct:
+            action_items.append(f"손절 {autopilot.stop_loss_pct:.2f}% · 테이크 {autopilot.take_profit_pct or '-'}%")
+        if autopilot.trailing_stop_pct:
+            action_items.append(f"트레일링 스톱 {autopilot.trailing_stop_pct:.2f}%")
+    else:
+        action_items.append("추세 모호 · 포지션 축소 또는 관망 유지")
+
+    risk_notices = [f"모니터링: {item}" for item in autopilot.monitoring]
+    if mode == "live":
+        risk_notices.append("실거래 모드: 업비트 API 키와 주문 한도를 다시 확인하세요.")
+    else:
+        risk_notices.append("페이퍼 모드: 실시간 하트비트를 확인하며 가상 계좌 동기화를 점검하세요.")
+
+    answer_lines = [
+        "Sado Trade Bot 코파일럿이 질문을 검토했습니다.",
+        f"질문: \"{question.strip()}\"",
+        f"현재 시장은 {insight.regime} 상태이며 권장 액션은 {insight.recommended_action} 입니다.",
+    ]
+
+    if autopilot.side != "flat":
+        action_text = "매수" if autopilot.side == "bid" else "매도"
+        answer_lines.append(
+            f"AI는 {action_text} 시나리오를 {autopilot.confidence_pct:.1f}% 신뢰도로 제안하며 포지션 규모는 자본의 "
+            f"약 {autopilot.position_size_pct:.1f}%를 추천합니다."
+        )
+    else:
+        answer_lines.append("신호가 엇갈려 관망을 권장합니다.")
+
+    if portfolio_plan:
+        answer_lines.append(
+            f"포트폴리오 관점에서는 {portfolio_plan.risk_profile_label} 프로파일에 맞춰 ETF와 코인을 병행 배분했습니다."
+        )
+
+    answer_lines.append("리스크 체크리스트와 모니터링 항목을 함께 확인하세요.")
+
+    return CopilotSynthesis(
+        answer=" ".join(answer_lines),
+        summary_points=summary_points,
+        risk_notices=risk_notices,
+        action_items=action_items,
+        highlights=highlights,
+        autopilot=autopilot,
+        generated_at=datetime.now(timezone.utc),
     )

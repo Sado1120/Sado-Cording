@@ -16,6 +16,9 @@ from .schemas import (
     MarketInsightsResponse,
     NewsItem,
     NewsResponse,
+    CopilotRequest,
+    CopilotResponse,
+    AutoPilotPlanPayload,
     OrderMode,
     OrderRequest,
     OrderResponse,
@@ -24,6 +27,8 @@ from .schemas import (
     PortfolioBlueprintResponse,
     PortfolioOptimizationRequest,
     PortfolioOptimizationResponse,
+    MarketAIMetricsPayload,
+    RiskControlAdvicePayload,
     PaperBalancePayload,
     PaperMarkRequest,
     PaperOrderPayload,
@@ -363,6 +368,108 @@ def optimize_portfolio(payload: PortfolioOptimizationRequest) -> PortfolioOptimi
         hedging_notes=plan.hedging_notes,
         methodology=plan.methodology,
         market_briefings=plan.market_briefings,
+    )
+
+
+@app.post("/ai/copilot", response_model=CopilotResponse)
+def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
+    market = payload.market.upper()
+    interval = payload.interval
+
+    try:
+        data = fetch_upbit_candles(market=market, interval=interval, count=220)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    headlines = fetch_authoritative_news(limit=6)
+
+    try:
+        insight = ai.analyse_market(
+            data.candles,
+            market=market,
+            interval=interval,
+            news=headlines,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    portfolio_plan: Optional[ai.PortfolioAIPlan] = None
+    if payload.include_portfolio:
+
+        def _fetch(market_code: str, fetch_interval: str, count: int):
+            fetched = fetch_upbit_candles(
+                market=market_code,
+                interval=fetch_interval,
+                count=count,
+            )
+            return fetched.candles
+
+        try:
+            portfolio_plan = ai.optimise_portfolio(
+                risk_appetite=payload.risk_appetite,
+                capital=payload.capital,
+                include_cash=True,
+                preferred_markets=[market],
+                candle_fetcher=_fetch,
+            )
+        except (ValueError, MarketDataError):
+            portfolio_plan = None
+
+    autopilot = ai.craft_autopilot_plan(
+        insight=insight,
+        risk_appetite=payload.risk_appetite,
+        capital=payload.capital,
+        mode=payload.mode.value,
+        portfolio_plan=portfolio_plan,
+    )
+
+    synthesis = ai.generate_copilot_synthesis(
+        question=payload.question,
+        insight=insight,
+        autopilot=autopilot,
+        portfolio_plan=portfolio_plan,
+        mode=payload.mode.value,
+    )
+
+    autopilot_payload = AutoPilotPlanPayload(
+        market=autopilot.market,
+        side=autopilot.side,
+        bias=autopilot.bias,
+        order_type=autopilot.order_type,
+        suggested_price=autopilot.suggested_price,
+        position_size_pct=autopilot.position_size_pct,
+        stop_loss_pct=autopilot.stop_loss_pct,
+        take_profit_pct=autopilot.take_profit_pct,
+        trailing_stop_pct=autopilot.trailing_stop_pct,
+        confidence_pct=autopilot.confidence_pct,
+        reasoning=autopilot.reasoning,
+        monitoring=autopilot.monitoring,
+    )
+
+    insight_payload = MarketAIResponse(
+        market=insight.market,
+        interval=insight.interval,
+        regime=insight.regime,
+        recommended_action=insight.recommended_action,
+        confidence_pct=insight.confidence_pct,
+        summary=insight.summary,
+        signals=insight.signals,
+        metrics=MarketAIMetricsPayload(**insight.metrics.__dict__),
+        risk=RiskControlAdvicePayload(**insight.risk.__dict__),
+        generated_at=insight.generated_at,
+        news=_news_items(insight.news),
+    )
+
+    return CopilotResponse(
+        generated_at=synthesis.generated_at,
+        answer=synthesis.answer,
+        summary_points=synthesis.summary_points,
+        risk_notices=synthesis.risk_notices,
+        action_items=synthesis.action_items,
+        highlights=synthesis.highlights,
+        autopilot=autopilot_payload,
+        insight=insight_payload,
+        news=_news_items(insight.news),
     )
 
 

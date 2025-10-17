@@ -26,6 +26,8 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
         assert metric_id in html, f"Dashboard should expose advanced metric card {metric_id}"
 
     assert "paper-heartbeat" in html, "Paper heartbeat indicator should be present in the dashboard"
+    assert "copilot-form" in html, "Copilot form should be present to submit AI questions"
+    assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
 
 
 def test_stylesheet_contains_korean_font_stack():

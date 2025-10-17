@@ -391,3 +391,40 @@ class PortfolioOptimizationResponse(BaseModel):
     hedging_notes: List[str]
     methodology: str
     market_briefings: List[MarketBriefingPayload]
+
+
+class AutoPilotPlanPayload(BaseModel):
+    market: str
+    side: Literal["bid", "ask", "flat"]
+    bias: Literal["long", "short", "neutral"]
+    order_type: Literal["market", "limit", "monitor"]
+    suggested_price: Optional[float]
+    position_size_pct: float
+    stop_loss_pct: float
+    take_profit_pct: Optional[float]
+    trailing_stop_pct: Optional[float]
+    confidence_pct: float
+    reasoning: List[str]
+    monitoring: List[str]
+
+
+class CopilotRequest(BaseModel):
+    question: str = Field(..., min_length=2)
+    market: str = Field("KRW-BTC", min_length=3)
+    interval: str = Field("minute60")
+    mode: OrderMode = OrderMode.PAPER
+    risk_appetite: float = Field(0.55, ge=0, le=1)
+    capital: float = Field(20_000_000, gt=0)
+    include_portfolio: bool = True
+
+
+class CopilotResponse(BaseModel):
+    generated_at: datetime
+    answer: str
+    summary_points: List[str]
+    risk_notices: List[str]
+    action_items: List[str]
+    highlights: List[str]
+    autopilot: AutoPilotPlanPayload
+    insight: MarketAIResponse
+    news: List[NewsItem]

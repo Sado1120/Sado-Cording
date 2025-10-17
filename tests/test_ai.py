@@ -27,3 +27,30 @@ def test_optimise_portfolio_with_trend_adjustment():
     assert abs(total_weight - 1) < 1e-6
     assert plan.expected_return_pct > 0
     assert plan.market_briefings  # AI가 생성한 시장 브리핑 확인
+
+
+def test_copilot_autopilot_generates_plan():
+    candles = generate_synthetic_prices(days=180, seed=404)
+    insight = ai.analyse_market(candles, market="KRW-BTC", interval="minute60", news=[])
+
+    autopilot = ai.craft_autopilot_plan(
+        insight=insight,
+        risk_appetite=0.6,
+        capital=25_000_000,
+        mode="paper",
+    )
+
+    assert autopilot.market == "KRW-BTC"
+    assert autopilot.monitoring
+
+    synthesis = ai.generate_copilot_synthesis(
+        question="지금 어떤 전략이 좋을까?",
+        insight=insight,
+        autopilot=autopilot,
+        portfolio_plan=None,
+        mode="paper",
+    )
+
+    assert "Sado Trade Bot" in synthesis.answer
+    assert synthesis.summary_points
+    assert synthesis.autopilot is autopilot

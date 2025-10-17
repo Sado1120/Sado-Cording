@@ -271,6 +271,119 @@
         </div>
       </section>
 
+      <section class="panel panel--copilot">
+        <header>
+          <h2>AI 코파일럿 실시간 자문</h2>
+          <span class="panel-subtitle">질문형 상담과 자동 매매 플랜을 동시에 확인</span>
+        </header>
+        <div class="copilot-grid">
+          <form id="copilot-form" class="copilot-form">
+            <label class="control-field">
+              <span>코파일럿에게 묻기</span>
+              <textarea
+                id="copilot-question"
+                placeholder="예: 지금 KRW-BTC 추가 매수해도 될까요?"
+                rows="3"
+              ></textarea>
+            </label>
+            <div class="copilot-controls">
+              <label class="control-field">
+                <span>리스크 성향</span>
+                <input id="copilot-risk" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <small id="copilot-risk-label">균형형 (0.60)</small>
+              </label>
+              <label class="control-field">
+                <span>투자 자본 (KRW)</span>
+                <input id="copilot-capital" type="number" value="20000000" step="100000" min="1000000" />
+              </label>
+              <label class="control-field copilot-toggle">
+                <input id="copilot-include-portfolio" type="checkbox" checked />
+                <span>AI 포트폴리오 추천 포함</span>
+              </label>
+            </div>
+            <button class="btn btn--primary" type="submit">AI 코파일럿 실행</button>
+            <p class="form-helper">질문은 한국어/영어 모두 지원하며, 현재 선택된 마켓/모드를 기반으로 분석합니다.</p>
+          </form>
+
+          <div class="copilot-output">
+            <article class="copilot-card">
+              <header>
+                <h3>코파일럿 응답</h3>
+              </header>
+              <p id="copilot-answer" class="copilot-answer">
+                전략 질문을 입력하면 AI 코파일럿이 시장 요약과 권장 행동을 제안합니다.
+              </p>
+              <div class="copilot-columns">
+                <div>
+                  <h4>핵심 요약</h4>
+                  <ul id="copilot-summary" class="copilot-list"></ul>
+                </div>
+                <div>
+                  <h4>실행 체크리스트</h4>
+                  <ul id="copilot-actions" class="copilot-list"></ul>
+                </div>
+                <div>
+                  <h4>리스크 경고</h4>
+                  <ul id="copilot-risk-notices" class="copilot-list"></ul>
+                </div>
+              </div>
+              <div>
+                <h4>포트폴리오 하이라이트</h4>
+                <ul id="copilot-highlights" class="copilot-list"></ul>
+              </div>
+            </article>
+
+            <article class="copilot-card copilot-card--autopilot">
+              <header>
+                <h3>AutoPilot 매매 플랜</h3>
+                <span id="autopilot-bias" class="badge badge--neutral">대기</span>
+              </header>
+              <dl class="copilot-autopilot__grid">
+                <div>
+                  <dt>매매 방향</dt>
+                  <dd id="autopilot-side">-</dd>
+                </div>
+                <div>
+                  <dt>신뢰도</dt>
+                  <dd id="autopilot-confidence">-</dd>
+                </div>
+                <div>
+                  <dt>포지션 규모</dt>
+                  <dd id="autopilot-size">-</dd>
+                </div>
+                <div>
+                  <dt>손절 / 테이크</dt>
+                  <dd id="autopilot-stops">-</dd>
+                </div>
+                <div>
+                  <dt>트레일링</dt>
+                  <dd id="autopilot-trailing">-</dd>
+                </div>
+              </dl>
+              <div class="copilot-split">
+                <div>
+                  <h4>근거</h4>
+                  <ul id="autopilot-reasoning" class="copilot-list"></ul>
+                </div>
+                <div>
+                  <h4>모니터링</h4>
+                  <ul id="autopilot-monitoring" class="copilot-list"></ul>
+                </div>
+              </div>
+            </article>
+
+            <article class="copilot-card">
+              <header>
+                <h3>코파일럿 로그</h3>
+              </header>
+              <ul id="copilot-log" class="copilot-log">
+                <li class="copilot-log__placeholder">아직 실행 기록이 없습니다.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="panel panel--metrics">
         <header>
           <h2>핵심 지표</h2>
