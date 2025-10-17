@@ -50,6 +50,10 @@ const avgWinEl = document.getElementById("metric-avg-win");
 const avgLossEl = document.getElementById("metric-avg-loss");
 const winLossEl = document.getElementById("metric-winloss");
 const tailEl = document.getElementById("metric-tail");
+const omegaEl = document.getElementById("metric-omega");
+const kellyEl = document.getElementById("metric-kelly");
+const streakWinEl = document.getElementById("metric-streak-win");
+const streakLossEl = document.getElementById("metric-streak-loss");
 const mcMedianEl = document.getElementById("metric-mc-median");
 const mcP05El = document.getElementById("metric-mc-p05");
 const mcP95El = document.getElementById("metric-mc-p95");
@@ -315,6 +319,10 @@ function updateMetrics(report) {
   avgLossEl.textContent = formatPercent(report.average_loss_pct);
   winLossEl.textContent = formatRatio(report.win_loss_ratio);
   tailEl.textContent = formatRatio(report.tail_ratio);
+  omegaEl.textContent = formatRatio(report.omega_ratio);
+  kellyEl.textContent = formatPercent(report.kelly_fraction_pct);
+  streakWinEl.textContent = `${report.max_consecutive_wins}회`;
+  streakLossEl.textContent = `${report.max_consecutive_losses}회`;
 
   mcMedianEl.textContent = formatPercent(report.monte_carlo_summary.median_return_pct);
   mcP05El.textContent = formatPercent(report.monte_carlo_summary.p05_return_pct);

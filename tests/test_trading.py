@@ -40,6 +40,10 @@ def test_run_ema_strategy_reports_risk_metrics():
     assert report.downside_deviation_pct >= 0
     assert math.isfinite(report.recovery_factor)
     assert math.isfinite(report.tail_ratio)
+    assert math.isfinite(report.omega_ratio)
+    assert math.isfinite(report.kelly_fraction_pct)
+    assert report.max_consecutive_wins >= 0
+    assert report.max_consecutive_losses >= 0
     assert set(report.monte_carlo_summary.keys()) == {
         "median_return_pct",
         "p05_return_pct",

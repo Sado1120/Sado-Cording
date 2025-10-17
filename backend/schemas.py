@@ -81,6 +81,10 @@ class SimulationResponse(BaseModel):
     average_loss_pct: float
     win_loss_ratio: float
     tail_ratio: float
+    omega_ratio: float
+    kelly_fraction_pct: float
+    max_consecutive_wins: int
+    max_consecutive_losses: int
     trades: List[TradePayload]
     equity_curve: List[float]
     trade_summary: dict

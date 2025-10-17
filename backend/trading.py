@@ -69,6 +69,10 @@ class StrategyReport:
     win_loss_ratio: float
     tail_ratio: float
     monte_carlo_summary: Dict[str, float]
+    omega_ratio: float
+    kelly_fraction_pct: float
+    max_consecutive_wins: int
+    max_consecutive_losses: int
 
 
 def generate_synthetic_prices(
@@ -467,6 +471,50 @@ def run_ema_strategy(
         else (float("inf") if average_win_pct > 0 else 0.0)
     )
 
+    positive_excess = [max(r, 0.0) for r in returns]
+    negative_excess = [max(-r, 0.0) for r in returns]
+    neg_sum = sum(negative_excess)
+    pos_sum = sum(positive_excess)
+    omega_ratio = (
+        pos_sum / neg_sum if neg_sum > 1e-12 else (float("inf") if pos_sum > 0 else 0.0)
+    )
+
+    winning_amounts = [trade.pnl for trade in trades if trade.pnl > 0]
+    losing_amounts = [-trade.pnl for trade in trades if trade.pnl < 0]
+    win_probability = len(winning_amounts) / len(trades) if trades else 0.0
+    if (
+        winning_amounts
+        and losing_amounts
+        and 0 < win_probability < 1
+        and (avg_loss := sum(losing_amounts) / len(losing_amounts)) > 0
+    ):
+        avg_win = sum(winning_amounts) / len(winning_amounts)
+        payoff = avg_win / avg_loss
+        if payoff > 0:
+            kelly_fraction = win_probability - (1 - win_probability) / payoff
+        else:
+            kelly_fraction = 0.0
+    else:
+        kelly_fraction = 0.0
+    kelly_fraction_pct = max(min(kelly_fraction * 100, 100.0), -100.0)
+
+    max_consecutive_wins = 0
+    max_consecutive_losses = 0
+    current_wins = 0
+    current_losses = 0
+    for trade in trades:
+        if trade.pnl > 0:
+            current_wins += 1
+            current_losses = 0
+        elif trade.pnl < 0:
+            current_losses += 1
+            current_wins = 0
+        else:
+            current_wins = 0
+            current_losses = 0
+        max_consecutive_wins = max(max_consecutive_wins, current_wins)
+        max_consecutive_losses = max(max_consecutive_losses, current_losses)
+
     tail_ratio = _tail_ratio(returns)
     monte_carlo_summary = _monte_carlo_bootstrap(
         [trade.return_pct for trade in trades],
@@ -496,6 +544,10 @@ def run_ema_strategy(
         win_loss_ratio=win_loss_ratio,
         tail_ratio=tail_ratio,
         monte_carlo_summary=monte_carlo_summary,
+        omega_ratio=omega_ratio,
+        kelly_fraction_pct=kelly_fraction_pct,
+        max_consecutive_wins=max_consecutive_wins,
+        max_consecutive_losses=max_consecutive_losses,
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 from functools import partial
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -8,12 +9,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
+# Align JavaScript MIME type with modern browsers so charset configuration is applied.
+mimetypes.add_type("application/javascript", ".js")
+
+
 class UTF8RequestHandler(SimpleHTTPRequestHandler):
-    extensions_map = SimpleHTTPRequestHandler.extensions_map.copy()
-    for ext in ["", ".html", ".css", ".js", ".json", ".svg", ".txt"]:
-        mime = extensions_map.get(ext, "text/plain")
-        if "charset" not in mime and mime.startswith("text"):
-            extensions_map[ext] = f"{mime}; charset=utf-8"
+    """Serve static assets with explicit UTF-8 content types."""
+
+    text_like_types = {
+        "application/javascript",
+        "application/json",
+        "image/svg+xml",
+    }
+
+    def guess_type(self, path: str) -> str:  # noqa: D401 - consistent with base class
+        """Return UTF-8 aware MIME types for text assets."""
+
+        mime, _ = mimetypes.guess_type(path)
+        if not mime:
+            return "application/octet-stream"
+
+        if mime.startswith("text/") or mime in self.text_like_types:
+            if "charset" not in mime:
+                return f"{mime}; charset=utf-8"
+        return mime
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003 - inherited signature
         # Suppress default stdout logging to keep Synology logs clean.
