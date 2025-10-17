@@ -1,4 +1,4 @@
-const STORAGE_KEY = "iljin-copilot-api-base";
+const STORAGE_KEY = "sado-trade-bot-api-base";
 
 const DEFAULT_API_BASE = (() => {
   const { origin } = window.location;
@@ -83,10 +83,30 @@ const paperMarkPriceInput = document.getElementById("paper-mark-price");
 const liveBalanceBtn = document.getElementById("live-balance-btn");
 const liveBalanceOutput = document.getElementById("live-balance-output");
 const alphaBriefingEl = document.getElementById("alpha-briefing");
+const liveMarketInput = document.getElementById("live-market");
+const liveIntervalSelect = document.getElementById("live-interval");
+const liveRefreshBtn = document.getElementById("live-refresh");
+const liveSourceEl = document.getElementById("live-source");
+const liveChartCanvas = document.getElementById("live-chart");
+const liveRegimeEl = document.getElementById("live-regime");
+const liveConfidenceEl = document.getElementById("live-confidence");
+const liveUpdatedEl = document.getElementById("live-updated");
+const liveSummaryEl = document.getElementById("live-summary");
+const liveEmaFastEl = document.getElementById("live-ema-fast");
+const liveEmaSlowEl = document.getElementById("live-ema-slow");
+const liveEmaSignalEl = document.getElementById("live-ema-signal");
+const liveRsiEl = document.getElementById("live-rsi");
+const liveMacdEl = document.getElementById("live-macd");
+const liveMacdHistEl = document.getElementById("live-macd-hist");
+const liveVolatilityEl = document.getElementById("live-volatility");
+const liveTrendEl = document.getElementById("live-trend");
+const liveActionEl = document.getElementById("live-action");
+const newsListEl = document.getElementById("news-list");
 
 yearEl.textContent = new Date().getFullYear();
 
 let chartInstance;
+let liveChartInstance;
 
 const normaliseBase = (value) => {
   if (!value) {
@@ -128,6 +148,133 @@ const formatRatio = (value) =>
 const parseNumeric = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+};
+
+const renderLiveChart = (candles) => {
+  if (!liveChartCanvas || !candles?.length) return;
+  const context = liveChartCanvas.getContext("2d");
+  const labels = candles.map((item) =>
+    new Date(item.timestamp).toLocaleString("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  );
+  const data = candles.map((item) => item.close);
+
+  const dataset = {
+    labels,
+    datasets: [
+      {
+        label: "종가",
+        data,
+        borderColor: "#7ae1ff",
+        backgroundColor: "rgba(122, 225, 255, 0.18)",
+        tension: 0.2,
+        fill: true,
+      },
+    ],
+  };
+
+  if (liveChartInstance) {
+    liveChartInstance.data = dataset;
+    liveChartInstance.update();
+    return;
+  }
+
+  liveChartInstance = new Chart(context, {
+    type: "line",
+    data: dataset,
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#98a1c3" },
+          grid: { color: "rgba(122, 225, 255, 0.08)" },
+        },
+        y: {
+          ticks: { color: "#98a1c3" },
+          grid: { color: "rgba(122, 225, 255, 0.08)" },
+        },
+      },
+    },
+  });
+};
+
+const updateLiveInsights = (insights, source) => {
+  if (!insights) return;
+  if (liveEmaFastEl) liveEmaFastEl.textContent = formatCurrency(insights.ema_fast);
+  if (liveEmaSlowEl) liveEmaSlowEl.textContent = formatCurrency(insights.ema_slow);
+  if (liveEmaSignalEl) liveEmaSignalEl.textContent = insights.ema_signal;
+  if (liveRsiEl) liveRsiEl.textContent = ratioFormatter.format(insights.rsi);
+  if (liveMacdEl) liveMacdEl.textContent = insights.macd.toFixed(3);
+  if (liveMacdHistEl) liveMacdHistEl.textContent = insights.macd_histogram.toFixed(3);
+  if (liveVolatilityEl) liveVolatilityEl.textContent = formatPercent(insights.volatility_pct);
+  if (liveTrendEl) liveTrendEl.textContent = `${ratioFormatter.format(insights.trend_strength)}%`;
+  if (liveActionEl) liveActionEl.textContent = insights.recommended_action;
+  if (liveRegimeEl) liveRegimeEl.textContent = `${insights.regime}`;
+  if (liveConfidenceEl)
+    liveConfidenceEl.textContent = `신뢰도 ${ratioFormatter.format(insights.confidence_pct)}%`;
+  if (liveSummaryEl) liveSummaryEl.textContent = insights.insight_summary;
+  if (liveUpdatedEl)
+    liveUpdatedEl.textContent = `${new Date(insights.latest_timestamp).toLocaleString("ko-KR")}`;
+  if (liveSourceEl)
+    liveSourceEl.textContent = source === "synthetic" ? "시뮬레이터 데이터" : "업비트 실시간";
+};
+
+const refreshLiveMarket = async () => {
+  if (!liveMarketInput || !liveIntervalSelect) return;
+  const market = liveMarketInput.value.trim() || "KRW-BTC";
+  const interval = liveIntervalSelect.value || "minute1";
+  try {
+    const candleResponse = await requestApi(
+      `/market/upbit/candles?market=${encodeURIComponent(market)}&interval=${interval}&count=160`
+    );
+    renderLiveChart(candleResponse.candles);
+    const insightResponse = await requestApi(
+      `/market/upbit/insights?market=${encodeURIComponent(market)}&interval=${interval}&count=200`
+    );
+    updateLiveInsights(insightResponse, insightResponse.source || candleResponse.source);
+  } catch (error) {
+    if (liveSummaryEl) {
+      liveSummaryEl.textContent = error.message;
+    }
+    if (liveSourceEl) {
+      liveSourceEl.textContent = "연결 실패";
+    }
+  }
+};
+
+const refreshNews = async () => {
+  if (!newsListEl) return;
+  try {
+    const response = await requestApi("/market/news");
+    newsListEl.innerHTML = "";
+    response.items.forEach((item) => {
+      const li = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = item.title;
+      const meta = document.createElement("div");
+      meta.className = "news-meta";
+      meta.textContent = `${item.source} · ${item.published_at}`;
+      li.appendChild(link);
+      li.appendChild(meta);
+      newsListEl.appendChild(li);
+    });
+    if (!response.items.length) {
+      newsListEl.innerHTML = '<li class="news-placeholder">표시할 뉴스가 없습니다.</li>';
+    }
+  } catch (error) {
+    newsListEl.innerHTML = `<li class="news-placeholder">${error.message}</li>`;
+  }
 };
 
 const requestApi = async (path, options = {}) => {
@@ -830,7 +977,27 @@ paperResetForm?.addEventListener("submit", handlePaperReset);
 paperRefreshBtn?.addEventListener("click", fetchPaperStatus);
 paperMarkForm?.addEventListener("submit", handlePaperMark);
 liveBalanceBtn?.addEventListener("click", handleLiveBalance);
+liveRefreshBtn?.addEventListener("click", () => {
+  refreshLiveMarket();
+});
+liveIntervalSelect?.addEventListener("change", () => {
+  refreshLiveMarket();
+});
+liveMarketInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    refreshLiveMarket();
+  }
+});
 
 refreshApiStatus();
 fetchPaperStatus();
 handleSimulation().catch(() => {});
+refreshLiveMarket().catch(() => {});
+refreshNews().catch(() => {});
+setInterval(() => {
+  refreshLiveMarket().catch(() => {});
+}, 60_000);
+setInterval(() => {
+  refreshNews().catch(() => {});
+}, 300_000);

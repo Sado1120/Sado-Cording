@@ -1,11 +1,12 @@
-"""Core trading and portfolio logic for the ILJIN Copilot project."""
+"""Core trading and portfolio logic for the Sado Trade Bot project."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import math
 import random
+import statistics
 
 
 @dataclass
@@ -175,6 +176,16 @@ def _tail_ratio(returns: Sequence[float]) -> float:
     if lower == 0:
         return float("inf") if upper > 0 else 0.0
     return upper / abs(lower)
+
+
+def _simple_returns(prices: Sequence[float]) -> List[float]:
+    returns: List[float] = []
+    for prev, curr in zip(prices, prices[1:]):
+        if prev == 0:
+            returns.append(0.0)
+        else:
+            returns.append((curr - prev) / prev)
+    return returns
 
 
 def _monte_carlo_bootstrap(
@@ -829,3 +840,141 @@ def design_risk_budgeted_portfolio(
     }
 
     return {"allocations": allocations, "summary": summary}
+
+
+def _compute_rsi(prices: Sequence[float], period: int = 14) -> float:
+    if len(prices) <= period:
+        return 50.0
+    gains: List[float] = []
+    losses: List[float] = []
+    for prev, curr in zip(prices[-period - 1 : -1], prices[-period:]):
+        change = curr - prev
+        if change >= 0:
+            gains.append(change)
+        else:
+            losses.append(abs(change))
+    average_gain = sum(gains) / period if gains else 0.0
+    average_loss = sum(losses) / period if losses else 0.0
+    if average_loss == 0:
+        return 100.0 if average_gain > 0 else 50.0
+    rs = average_gain / average_loss
+    return 100 - (100 / (1 + rs))
+
+
+def _compute_macd(
+    prices: Sequence[float],
+    *,
+    fast_period: int = 12,
+    slow_period: int = 26,
+    signal_period: int = 9,
+) -> Tuple[float, float, float]:
+    if len(prices) < slow_period + signal_period:
+        return 0.0, 0.0, 0.0
+    fast_ema = _ema(prices, fast_period)
+    slow_ema = _ema(prices, slow_period)
+    overlap = min(len(fast_ema), len(slow_ema))
+    macd_series = [
+        fast_ema[-overlap + idx] - slow_ema[-overlap + idx]
+        for idx in range(overlap)
+    ]
+    signal_series = _ema(macd_series, signal_period)
+    if not macd_series or not signal_series:
+        return 0.0, 0.0, 0.0
+    macd_value = macd_series[-1]
+    signal_value = signal_series[-1]
+    return macd_value, signal_value, macd_value - signal_value
+
+
+def generate_market_insights(candles: Sequence[Candle]) -> Dict[str, object]:
+    if not candles:
+        return {
+            "ema_fast": 0.0,
+            "ema_slow": 0.0,
+            "ema_signal": "중립",
+            "rsi": 50.0,
+            "macd": 0.0,
+            "macd_signal": 0.0,
+            "macd_histogram": 0.0,
+            "volatility_pct": 0.0,
+            "trend_strength": 0.0,
+            "regime": "중립",
+            "recommended_action": "데이터 없음",
+            "confidence_pct": 0.0,
+            "insight_summary": "분석을 위한 데이터가 부족합니다.",
+        }
+
+    closes = [candle.close for candle in candles]
+    returns = _simple_returns(closes)
+    ema_fast_series = _ema(closes, 12)
+    ema_slow_series = _ema(closes, 26)
+    ema_fast = ema_fast_series[-1] if ema_fast_series else closes[-1]
+    ema_slow = ema_slow_series[-1] if ema_slow_series else closes[-1]
+    ema_signal = "상승" if ema_fast > ema_slow else "하락" if ema_fast < ema_slow else "중립"
+
+    rsi = _compute_rsi(closes)
+    macd, macd_signal, macd_histogram = _compute_macd(closes)
+
+    if returns:
+        volatility = statistics.pstdev(returns) * math.sqrt(365) * 100
+    else:
+        volatility = 0.0
+
+    if len(closes) >= 2:
+        slope = closes[-1] - closes[0]
+        trend_strength = slope / closes[0] if closes[0] else 0.0
+    else:
+        trend_strength = 0.0
+
+    if rsi > 70 and macd_histogram < 0:
+        recommended_action = "부분 청산 고려"
+    elif rsi < 35 and macd_histogram > 0:
+        recommended_action = "분할 매수 기회"
+    elif ema_fast > ema_slow and macd_histogram > 0:
+        recommended_action = "추세 추종 매수"
+    elif ema_fast < ema_slow and macd_histogram < 0:
+        recommended_action = "리스크 관리 강조"
+    else:
+        recommended_action = "중립 유지"
+
+    confidence_components = [
+        min(abs(macd_histogram) * 150, 30),
+        min(abs(rsi - 50) * 1.2, 30),
+        min(abs(trend_strength) * 100, 20),
+    ]
+    confidence_pct = max(20.0, sum(confidence_components))
+    confidence_pct = min(confidence_pct, 95.0)
+
+    if trend_strength > 5:
+        regime = "강한 상승"
+    elif trend_strength > 0:
+        regime = "약한 상승"
+    elif trend_strength < -5:
+        regime = "강한 하락"
+    elif trend_strength < 0:
+        regime = "약한 하락"
+    else:
+        regime = "중립"
+
+    summary_parts = [
+        f"EMA 신호: {ema_signal}",
+        f"RSI: {rsi:.1f}",
+        f"MACD 히스토그램: {macd_histogram:.3f}",
+        f"변동성(연환산): {volatility:.2f}%",
+        f"추천 액션: {recommended_action}",
+    ]
+
+    return {
+        "ema_fast": ema_fast,
+        "ema_slow": ema_slow,
+        "ema_signal": ema_signal,
+        "rsi": rsi,
+        "macd": macd,
+        "macd_signal": macd_signal,
+        "macd_histogram": macd_histogram,
+        "volatility_pct": volatility,
+        "trend_strength": trend_strength * 100,
+        "regime": regime,
+        "recommended_action": recommended_action,
+        "confidence_pct": confidence_pct,
+        "insight_summary": " | ".join(summary_parts),
+    }

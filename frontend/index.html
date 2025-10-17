@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta http-equiv="Content-Language" content="ko" />
-    <title>ILJIN Copilot Control Center</title>
+    <title>Sado Trade Bot Control Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -25,10 +25,10 @@
     <header class="hero">
       <div class="hero__overlay"></div>
       <div class="hero__content">
-        <h1>ILJIN Copilot</h1>
+        <h1>Sado Trade Bot</h1>
         <p>
-          코인과 글로벌 ETF 포트폴리오를 한 번에 조율하는 차세대 자동매매 콘트롤 센터.
-          전략 연구부터 포트폴리오 리밸런싱까지, 데이터와 디자인으로 집중력을 높여보세요.
+          업비트 실시간 시황과 글로벌 ETF 전략을 결합한 프로페셔널 자동매매 지휘 본부입니다.
+          실거래·가상 트레이딩, 시세 분석, 기관 뉴스 브리핑까지 Synology 8501 환경에 최적화했습니다.
         </p>
         <div class="hero__cta">
           <button id="simulate-btn" class="btn btn--primary">전략 시뮬레이션 실행</button>
@@ -62,6 +62,70 @@
               설비 고장 Copilot UI 스타일을 그대로 적용해 공장 설비와 자동매매 현황을 한 화면에서 모니터링할 수 있도록 디자인했습니다.
             </p>
           </article>
+        </div>
+      </section>
+
+      <section class="panel panel--live">
+        <header>
+          <h2>실시간 업비트 시황</h2>
+          <span class="panel-subtitle">차트·지표·기관 뉴스로 시장을 즉시 파악하세요</span>
+        </header>
+        <div class="live-grid">
+          <div class="live-controls">
+            <div class="live-form">
+              <label class="control-field">
+                <span>마켓</span>
+                <input id="live-market" type="text" value="KRW-BTC" />
+              </label>
+              <label class="control-field">
+                <span>주기</span>
+                <select id="live-interval">
+                  <option value="minute1">1분</option>
+                  <option value="minute5">5분</option>
+                  <option value="minute15">15분</option>
+                  <option value="minute60">60분</option>
+                  <option value="day">일간</option>
+                </select>
+              </label>
+              <button id="live-refresh" class="btn btn--accent" type="button">시황 새로고침</button>
+              <span id="live-source" class="muted">데이터 준비 중</span>
+            </div>
+            <div class="insight-cards">
+              <article class="insight-card">
+                <h3>EMA 크로스</h3>
+                <dl>
+                  <div><dt>Fast EMA</dt><dd id="live-ema-fast">-</dd></div>
+                  <div><dt>Slow EMA</dt><dd id="live-ema-slow">-</dd></div>
+                  <div><dt>신호</dt><dd id="live-ema-signal">-</dd></div>
+                </dl>
+              </article>
+              <article class="insight-card">
+                <h3>오실레이터</h3>
+                <dl>
+                  <div><dt>RSI</dt><dd id="live-rsi">-</dd></div>
+                  <div><dt>MACD</dt><dd id="live-macd">-</dd></div>
+                  <div><dt>히스토그램</dt><dd id="live-macd-hist">-</dd></div>
+                </dl>
+              </article>
+              <article class="insight-card">
+                <h3>리스크 브리핑</h3>
+                <dl>
+                  <div><dt>연환산 변동성</dt><dd id="live-volatility">-</dd></div>
+                  <div><dt>추세 강도</dt><dd id="live-trend">-</dd></div>
+                  <div><dt>권장 액션</dt><dd id="live-action">-</dd></div>
+                </dl>
+              </article>
+            </div>
+          </div>
+          <div class="live-visuals">
+            <canvas id="live-chart" height="220"></canvas>
+            <div class="live-meta">
+              <span id="live-regime" class="badge">-</span>
+              <span id="live-confidence" class="badge badge--ghost">신뢰도 -%</span>
+              <span id="live-updated" class="muted">업데이트 대기</span>
+            </div>
+            <pre id="live-summary" class="live-summary">시장 요약이 여기에 표시됩니다.</pre>
+          </div>
         </div>
       </section>
 
@@ -338,6 +402,16 @@
         </div>
       </section>
 
+      <section class="panel panel--news">
+        <header>
+          <h2>기관 뉴스 레이더</h2>
+          <span class="panel-subtitle">IMF, BIS, 글로벌 운용사 리포트를 즉시 확인</span>
+        </header>
+        <ul id="news-list" class="news-list">
+          <li class="news-placeholder">뉴스를 불러오는 중입니다...</li>
+        </ul>
+      </section>
+
       <section class="panel panel--monte">
         <header>
           <h2>몬테카를로 스트레스 테스트</h2>
@@ -519,7 +593,7 @@
 
     <footer class="footer">
       <p>
-        © <span id="year"></span> ILJIN Copilot · Upbit + Global ETF 멀티자산 어드바이저.
+        © <span id="year"></span> Sado Trade Bot · Upbit + Global ETF 멀티자산 어드바이저.
         자동화, 데이터 스토리텔링, 감각적인 UX를 경험해보세요.
       </p>
     </footer>

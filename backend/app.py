@@ -1,5 +1,7 @@
-"""FastAPI application exposing ILJIN Copilot capabilities."""
+"""FastAPI application exposing Sado Trade Bot capabilities."""
 from __future__ import annotations
+
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +10,10 @@ from . import trading
 from .schemas import (
     CandlePayload,
     LiveBalancesResponse,
+    MarketCandlesResponse,
+    MarketInsightsResponse,
+    NewsItem,
+    NewsResponse,
     OrderMode,
     OrderRequest,
     OrderResponse,
@@ -33,12 +39,18 @@ from .execution import (
     create_upbit_client_from_env,
     paper_broker,
 )
+from .market import (
+    MarketDataError,
+    build_market_insights,
+    fetch_authoritative_news,
+    fetch_upbit_candles,
+)
 
 
 app = FastAPI(
-    title="ILJIN Copilot API",
-    description="Automated trading research assistant for digital assets and ETFs",
-    version="1.0.0",
+    title="Sado Trade Bot API",
+    description="Professional Upbit and ETF trading assistant with live analytics",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -181,6 +193,62 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         trade_summary=trade_summary,
         monte_carlo_summary=report.monte_carlo_summary,
     )
+
+
+@app.get("/market/upbit/candles", response_model=MarketCandlesResponse)
+def get_upbit_candles(
+    market: str = "KRW-BTC", interval: str = "minute1", count: int = 120
+) -> MarketCandlesResponse:
+    try:
+        data = fetch_upbit_candles(market=market, interval=interval, count=count)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    candles = [
+        CandlePayload(
+            timestamp=item.timestamp,
+            open=item.open,
+            high=item.high,
+            low=item.low,
+            close=item.close,
+            volume=item.volume,
+        )
+        for item in data.candles
+    ]
+
+    return MarketCandlesResponse(
+        market=market.upper(),
+        interval=interval,
+        source=data.source,
+        candles=candles,
+    )
+
+
+@app.get("/market/upbit/insights", response_model=MarketInsightsResponse)
+def get_market_insights(
+    market: str = "KRW-BTC", interval: str = "minute1", count: int = 160
+) -> MarketInsightsResponse:
+    try:
+        data = fetch_upbit_candles(market=market, interval=interval, count=count)
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    insights = build_market_insights(
+        data.candles,
+        market=market.upper(),
+        interval=interval,
+    )
+
+    return MarketInsightsResponse(source=data.source, **insights)
+
+
+@app.get("/market/news", response_model=NewsResponse)
+def get_news(limit: int = 8) -> NewsResponse:
+    items = [
+        NewsItem(**entry)
+        for entry in fetch_authoritative_news(limit=limit)
+    ]
+    return NewsResponse(generated_at=datetime.utcnow(), items=items)
 
 
 def _paper_status_response() -> PaperStatusResponse:

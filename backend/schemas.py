@@ -252,3 +252,43 @@ class OrderResponse(BaseModel):
 
 class LiveBalancesResponse(BaseModel):
     balances: List[dict]
+
+
+class MarketCandlesResponse(BaseModel):
+    market: str
+    interval: str
+    source: Literal["upbit", "synthetic"]
+    candles: List[CandlePayload]
+
+
+class MarketInsightsResponse(BaseModel):
+    market: str
+    interval: str
+    source: Literal["upbit", "synthetic"]
+    latest_close: float
+    latest_timestamp: datetime
+    ema_fast: float
+    ema_slow: float
+    ema_signal: str
+    rsi: float
+    macd: float
+    macd_signal: float
+    macd_histogram: float
+    volatility_pct: float
+    trend_strength: float
+    regime: str
+    recommended_action: str
+    confidence_pct: float
+    insight_summary: str
+
+
+class NewsItem(BaseModel):
+    title: str
+    url: str
+    source: str
+    published_at: str
+
+
+class NewsResponse(BaseModel):
+    generated_at: datetime
+    items: List[NewsItem]
