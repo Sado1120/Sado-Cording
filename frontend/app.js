@@ -31,6 +31,7 @@ const tradePayoffEl = document.getElementById("metric-trade-payoff");
 const tradeBestEl = document.getElementById("metric-trade-best");
 const tradeWorstEl = document.getElementById("metric-trade-worst");
 const tradeTableBody = document.getElementById("trade-table");
+const equityNoteEl = document.getElementById("equity-note");
 const rebalanceOutputEl = document.getElementById("rebalance-output");
 const blueprintOutputEl = document.getElementById("blueprint-output");
 const yearEl = document.getElementById("year");
@@ -235,6 +236,38 @@ const updateCopilotRiskLabel = (value) => {
   if (numeric <= 0.3) profile = "안정형";
   else if (numeric >= 0.7) profile = "공격형";
   copilotRiskLabel.textContent = `${profile} (${numeric.toFixed(2)})`;
+};
+
+const updateEquityNote = (values) => {
+  if (!equityNoteEl) return;
+
+  if (!Array.isArray(values) || values.length === 0) {
+    equityNoteEl.innerHTML =
+      "<strong>시뮬레이션 대기 중</strong><span>EMA 전략을 실행하면 자본 곡선의 변동폭과 상승·하락 구간이 여기에 표시됩니다.</span>";
+    return;
+  }
+
+  const numericValues = values.map((value) => Number(value));
+  if (numericValues.some((value) => !Number.isFinite(value))) {
+    equityNoteEl.innerHTML =
+      "<strong>에퀴티 데이터를 해석할 수 없습니다.</strong><span>전략을 다시 실행해 정확한 곡선을 생성해주세요.</span>";
+    return;
+  }
+
+  const start = numericValues[0];
+  const end = numericValues[numericValues.length - 1];
+  const high = Math.max(...numericValues);
+  const low = Math.min(...numericValues);
+  const change = end - start;
+  const changePct = start !== 0 ? (change / start) * 100 : 0;
+  const direction = change >= 0 ? "상승" : "하락";
+  const arrow = change >= 0 ? "▲" : "▼";
+  const summary = `${direction} ${formatPercent(Math.abs(changePct))} · 최고 ${formatCurrency(high)} KRW · 최저 ${formatCurrency(low)} KRW · ${values.length}봉 누적`;
+
+  equityNoteEl.innerHTML = `
+    <strong>${formatCurrency(start)} KRW → ${formatCurrency(end)} KRW ${arrow}</strong>
+    <span>${summary}</span>
+  `;
 };
 
 const updatePaperHeartbeat = (balance) => {
@@ -1025,32 +1058,49 @@ function renderTrades(trades) {
 }
 
 function renderEquityCurve(values) {
-  const ctx = document.getElementById("equity-chart");
-  if (!ctx) return;
-  const labels = values.map((_, idx) => idx + 1);
+  const canvas = document.getElementById("equity-chart");
+  if (!canvas) return;
 
-  if (chartInstance) {
-    chartInstance.destroy();
+  if (!Array.isArray(values) || values.length === 0) {
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+    updateEquityNote([]);
+    return;
   }
 
-  chartInstance = new Chart(ctx, {
+  const labels = values.map((_, idx) => idx + 1);
+  const dataset = {
+    labels,
+    datasets: [
+      {
+        label: "Equity",
+        data: values,
+        fill: true,
+        borderColor: "#7ae1ff",
+        backgroundColor: "rgba(122, 225, 255, 0.15)",
+        tension: 0.35,
+        pointRadius: 0,
+      },
+    ],
+  };
+
+  if (chartInstance) {
+    chartInstance.data = dataset;
+    chartInstance.update();
+    updateEquityNote(values);
+    return;
+  }
+
+  chartInstance = new Chart(canvas, {
     type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Equity",
-          data: values,
-          fill: true,
-          borderColor: "#7ae1ff",
-          backgroundColor: "rgba(122, 225, 255, 0.15)",
-          tension: 0.35,
-          pointRadius: 0,
-        },
-      ],
-    },
+    data: dataset,
     options: {
       maintainAspectRatio: false,
+      layout: {
+        padding: { top: 8, bottom: 8, left: 4, right: 4 },
+      },
       scales: {
         x: {
           display: false,
@@ -1083,8 +1133,17 @@ function renderEquityCurve(values) {
           },
         },
       },
+      elements: {
+        line: {
+          borderWidth: 2,
+        },
+        point: {
+          radius: 0,
+        },
+      },
     },
   });
+  updateEquityNote(values);
 }
 
 async function handleSimulation(event) {
@@ -1120,6 +1179,7 @@ async function handleSimulation(event) {
     renderTrades(report.trades);
     renderEquityCurve(report.equity_curve);
   } catch (error) {
+    updateEquityNote([]);
     alert(error.message);
   }
 }

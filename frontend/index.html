@@ -608,9 +608,13 @@
       <section class="panel panel--chart">
         <header>
           <h2>전략 에퀴티 곡선</h2>
-          <span class="panel-subtitle">자본曲선을 통해 상승/하락 리듬을 체크하세요</span>
+          <span class="panel-subtitle">자본曲선을 통해 상승/하락 리듬과 위험 구간을 한눈에 파악하세요</span>
         </header>
-        <canvas id="equity-chart" height="160"></canvas>
+        <canvas id="equity-chart" height="130"></canvas>
+        <p id="equity-note" class="chart-note">
+          시뮬레이션을 실행하면 시작 자본과 종료 자본, 최대/최소 구간, 누적 봉수를 요약해 드립니다.
+          상승·하락 전환점과 누적 변동폭을 참고해 전략의 안정성을 판단하세요.
+        </p>
       </section>
 
       <section class="panel panel--controls">

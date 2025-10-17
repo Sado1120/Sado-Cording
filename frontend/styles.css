@@ -108,13 +108,50 @@ body {
   gap: 2.5rem;
 }
 
-.panel { 
+.panel {
   background: var(--panel-bg);
   backdrop-filter: blur(24px);
   border: 1px solid var(--border);
   border-radius: 24px;
   padding: 2rem;
   box-shadow: var(--shadow);
+}
+
+.panel--chart {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+#equity-chart {
+  width: 100%;
+  max-height: 240px;
+  background: rgba(10, 17, 36, 0.35);
+  border-radius: 18px;
+  box-shadow: inset 0 0 0 1px rgba(122, 225, 255, 0.08);
+}
+
+.chart-note {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.chart-note strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  margin-bottom: 0.2rem;
+}
+
+.chart-note span {
+  display: block;
+}
+
+@media (max-width: 900px) {
+  #equity-chart {
+    max-height: 200px;
+  }
 }
 
 .panel--live .live-grid {

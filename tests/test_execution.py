@@ -68,6 +68,27 @@ def test_paper_endpoints_support_reset_mark_and_order():
     assert status_response.last_updated <= datetime.utcnow()
 
 
+def test_market_orders_use_marked_price_and_hide_empty_positions():
+    broker = PaperBroker(fee_rate=0.0, initial_cash=1_000_000)
+
+    broker.mark_price(market="KRW-XRP", price=500)
+    snapshot = broker.snapshot()
+    assert not any(pos.market == "KRW-XRP" for pos in snapshot.positions)
+
+    buy_snapshot = broker.submit_order(
+        market="KRW-XRP", side="bid", price=None, volume=100, ord_type="market"
+    )
+    assert buy_snapshot.positions[0].average_price == pytest.approx(500)
+    assert buy_snapshot.cash == pytest.approx(950_000)
+
+    broker.mark_price(market="KRW-XRP", price=520)
+    sell_snapshot = broker.submit_order(
+        market="KRW-XRP", side="ask", price=None, volume=100, ord_type="market"
+    )
+    assert sell_snapshot.cash == pytest.approx(1_002_000)
+    assert not sell_snapshot.positions
+
+
 def test_live_order_requires_keys(monkeypatch):
     reset_global_broker()
     monkeypatch.delenv("UPBIT_ACCESS_KEY", raising=False)

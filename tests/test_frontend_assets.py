@@ -28,6 +28,7 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "paper-heartbeat" in html, "Paper heartbeat indicator should be present in the dashboard"
     assert "copilot-form" in html, "Copilot form should be present to submit AI questions"
     assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
+    assert "equity-note" in html, "Equity summary note should guide users through the chart interpretation"
 
 
 def test_stylesheet_contains_korean_font_stack():

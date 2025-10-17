@@ -87,6 +87,7 @@ class PaperBroker:
         self.cash = float(initial_cash if initial_cash is not None else self._initial_cash)
         self.positions: Dict[str, PaperPosition] = {}
         self.orders: List[PaperOrder] = []
+        self.last_prices: Dict[str, float] = {}
         self.last_update = datetime.utcnow()
         if initial_cash is not None:
             self._initial_cash = float(initial_cash)
@@ -101,6 +102,7 @@ class PaperBroker:
             self.positions[market] = position
         else:
             position.market_price = price
+        self.last_prices[market] = price
         self.last_update = datetime.utcnow()
         return position
 
@@ -116,45 +118,55 @@ class PaperBroker:
         market = market.upper()
         if volume is None or volume <= 0:
             raise ExecutionError("거래 수량은 0보다 커야 합니다.")
-        if side == "bid" and (price is None or price <= 0):
-            raise ExecutionError("매수 주문에는 유효한 가격이 필요합니다.")
-        if side == "ask" and market not in self.positions:
+        existing = self.positions.get(market)
+        if side == "ask" and (existing is None or existing.volume <= 0):
             raise ExecutionError("해당 종목을 보유하고 있지 않습니다.")
 
-        price = float(price if price is not None else 0.0)
+        def resolve_price() -> float:
+            if price is not None and price > 0:
+                return float(price)
+            if existing and existing.market_price > 0:
+                return float(existing.market_price)
+            fallback = self.last_prices.get(market)
+            if fallback and fallback > 0:
+                return float(fallback)
+            raise ExecutionError("시장가 주문을 실행하려면 최신 시세를 먼저 동기화하세요.")
+
+        price_value = resolve_price()
         volume = float(volume)
-        fee = price * volume * self.fee_rate
+        fee = price_value * volume * self.fee_rate
         realized_pnl = 0.0
 
         if side == "bid":
-            cost = price * volume + fee
+            cost = price_value * volume + fee
             if cost > self.cash + 1e-6:
                 raise ExecutionError("가용 현금이 부족합니다.")
-            existing = self.positions.get(market)
             if existing:
-                total_value = existing.average_price * existing.volume + price * volume
+                total_value = existing.average_price * existing.volume + price_value * volume
                 total_volume = existing.volume + volume
-                avg_price = total_value / total_volume if total_volume else price
+                avg_price = total_value / total_volume if total_volume else price_value
                 existing.volume = total_volume
                 existing.average_price = avg_price
-                existing.market_price = price
+                existing.market_price = price_value
             else:
                 self.positions[market] = PaperPosition(
                     market=market,
                     volume=volume,
-                    average_price=price,
-                    market_price=price,
+                    average_price=price_value,
+                    market_price=price_value,
                 )
             self.cash -= cost
         else:
-            position = self.positions[market]
+            position = existing  # type: ignore[assignment]
+            if position is None:
+                raise ExecutionError("해당 종목을 보유하고 있지 않습니다.")
             if volume - position.volume > 1e-9:
                 raise ExecutionError("보유 수량보다 많이 매도할 수 없습니다.")
-            proceeds = price * volume - fee
+            proceeds = price_value * volume - fee
             self.cash += proceeds
-            realized_pnl = (price - position.average_price) * volume - fee
+            realized_pnl = (price_value - position.average_price) * volume - fee
             position.volume -= volume
-            position.market_price = price
+            position.market_price = price_value
             if position.volume <= 1e-9:
                 del self.positions[market]
 
@@ -162,18 +174,19 @@ class PaperBroker:
             order_id=str(uuid.uuid4()),
             market=market,
             side=side,
-            price=price,
+            price=price_value,
             volume=volume,
             fee=fee,
             executed_at=datetime.utcnow(),
             realized_pnl=realized_pnl,
         )
         self.orders.insert(0, order)
+        self.last_prices[market] = price_value
         self.last_update = datetime.utcnow()
         return self.snapshot()
 
     def snapshot(self) -> BalanceSnapshot:
-        positions = list(self.positions.values())
+        positions = [pos for pos in self.positions.values() if pos.volume > 1e-9]
         portfolio_value = self.cash + sum(pos.market_value for pos in positions)
         return BalanceSnapshot(
             cash=self.cash,
