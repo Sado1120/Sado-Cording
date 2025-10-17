@@ -73,6 +73,11 @@ class StrategyReport:
     kelly_fraction_pct: float
     max_consecutive_wins: int
     max_consecutive_losses: int
+    skewness: float
+    kurtosis: float
+    average_drawdown_pct: float
+    pain_index: float
+    max_runup_pct: float
 
 
 def generate_synthetic_prices(
@@ -398,9 +403,24 @@ def run_ema_strategy(
             daily_volatility = math.sqrt(variance)
         else:
             daily_volatility = 0.0
+
+        population_variance = sum((r - avg_daily_return) ** 2 for r in returns) / len(returns)
+        population_std = math.sqrt(population_variance)
+        if population_std > 0:
+            skewness = (
+                sum((r - avg_daily_return) ** 3 for r in returns) / len(returns)
+            ) / (population_std**3)
+            kurtosis = (
+                sum((r - avg_daily_return) ** 4 for r in returns) / len(returns)
+            ) / (population_std**4) - 3
+        else:
+            skewness = 0.0
+            kurtosis = 0.0
     else:
         avg_daily_return = 0.0
         daily_volatility = 0.0
+        skewness = 0.0
+        kurtosis = 0.0
 
     volatility_pct = daily_volatility * math.sqrt(365) * 100
     sharpe_ratio = (
@@ -515,6 +535,39 @@ def run_ema_strategy(
         max_consecutive_wins = max(max_consecutive_wins, current_wins)
         max_consecutive_losses = max(max_consecutive_losses, current_losses)
 
+    drawdown_magnitudes: List[float] = []
+    peak_equity = -math.inf
+    for value in equity_curve:
+        if value <= 0:
+            continue
+        if peak_equity == -math.inf:
+            peak_equity = value
+        peak_equity = max(peak_equity, value)
+        drawdown = (value - peak_equity) / peak_equity * 100
+        if drawdown < 0:
+            drawdown_magnitudes.append(abs(drawdown))
+
+    pain_index = (
+        sum(drawdown_magnitudes) / len(equity_curve)
+        if equity_curve and drawdown_magnitudes
+        else 0.0
+    )
+    average_drawdown_pct = (
+        sum(drawdown_magnitudes) / len(drawdown_magnitudes)
+        if drawdown_magnitudes
+        else 0.0
+    )
+
+    max_runup_pct = 0.0
+    trough: Optional[float] = None
+    for value in equity_curve:
+        if value <= 0:
+            continue
+        trough = value if trough is None else min(trough, value)
+        if trough > 0:
+            runup = (value - trough) / trough * 100
+            max_runup_pct = max(max_runup_pct, runup)
+
     tail_ratio = _tail_ratio(returns)
     monte_carlo_summary = _monte_carlo_bootstrap(
         [trade.return_pct for trade in trades],
@@ -548,6 +601,11 @@ def run_ema_strategy(
         kelly_fraction_pct=kelly_fraction_pct,
         max_consecutive_wins=max_consecutive_wins,
         max_consecutive_losses=max_consecutive_losses,
+        skewness=skewness,
+        kurtosis=kurtosis,
+        average_drawdown_pct=average_drawdown_pct,
+        pain_index=pain_index,
+        max_runup_pct=max_runup_pct,
     )
 
 

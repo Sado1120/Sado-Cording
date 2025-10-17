@@ -44,6 +44,12 @@ def test_run_ema_strategy_reports_risk_metrics():
     assert math.isfinite(report.kelly_fraction_pct)
     assert report.max_consecutive_wins >= 0
     assert report.max_consecutive_losses >= 0
+    assert not math.isnan(report.skewness)
+    assert not math.isnan(report.kurtosis)
+    assert report.average_drawdown_pct >= 0
+    assert report.pain_index >= 0
+    assert report.max_runup_pct >= 0
+    assert report.average_drawdown_pct <= report.max_drawdown_pct + 1e-6
     assert set(report.monte_carlo_summary.keys()) == {
         "median_return_pct",
         "p05_return_pct",

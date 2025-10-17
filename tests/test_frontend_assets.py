@@ -11,7 +11,18 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
 
     assert "charset=UTF-8" in html, "index.html must explicitly declare UTF-8 charset"
     assert "Noto+Sans+KR" in html, "index.html should load Noto Sans KR to render Hangul"
-    for metric_id in ("metric-omega", "metric-kelly", "metric-streak-win", "metric-streak-loss"):
+    required_metrics = {
+        "metric-omega",
+        "metric-kelly",
+        "metric-streak-win",
+        "metric-streak-loss",
+        "metric-skewness",
+        "metric-kurtosis",
+        "metric-avg-drawdown",
+        "metric-pain",
+        "metric-runup",
+    }
+    for metric_id in required_metrics:
         assert metric_id in html, f"Dashboard should expose advanced metric card {metric_id}"
 
 

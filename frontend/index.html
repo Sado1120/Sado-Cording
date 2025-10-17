@@ -186,6 +186,7 @@
               <span id="metric-trade-expectancy">기대 0.0%</span>
               <span id="metric-trade-median">중앙값 0.0%</span>
               <span id="metric-trade-winloss">승패비 0.00</span>
+              <span id="metric-trade-payoff">페이오프 0.00</span>
               <span id="metric-trade-best">최대수익 0.0%</span>
               <span id="metric-trade-worst">최대손실 0.0%</span>
             </div>
@@ -299,6 +300,41 @@
             <strong id="metric-streak-loss" class="metric-value metric-value--compact">0회</strong>
             <span class="metric-subtext">최대 연속 하락 스트릭</span>
           </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">왜도</span>
+            <strong id="metric-skewness" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">수익 분포 비대칭</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">첨도</span>
+            <strong id="metric-kurtosis" class="metric-value metric-value--compact">0.00</strong>
+            <span class="metric-subtext">꼬리 두께 집중도</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 낙폭</span>
+            <strong id="metric-avg-drawdown" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">낙폭 평균 깊이</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">페인 인덱스</span>
+            <strong id="metric-pain" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">포트폴리오 고통 지수</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">최대 상승폭</span>
+            <strong id="metric-runup" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">트로프 대비 최고 반등</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--alpha">
+        <header>
+          <h2>알파 브리핑</h2>
+          <span class="panel-subtitle">켈리, 왜도, 낙폭 지수를 바탕으로 전략 운용 포인트 요약</span>
+        </header>
+        <div class="alpha-briefing__body">
+          <pre id="alpha-briefing">시뮬레이션을 실행하면 전문가 브리핑이 제공됩니다.</pre>
         </div>
       </section>
 

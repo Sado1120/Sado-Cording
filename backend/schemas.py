@@ -85,6 +85,11 @@ class SimulationResponse(BaseModel):
     kelly_fraction_pct: float
     max_consecutive_wins: int
     max_consecutive_losses: int
+    skewness: float
+    kurtosis: float
+    average_drawdown_pct: float
+    pain_index: float
+    max_runup_pct: float
     trades: List[TradePayload]
     equity_curve: List[float]
     trade_summary: dict

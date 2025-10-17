@@ -27,6 +27,7 @@ const tradeAvgEl = document.getElementById("metric-trade-avg");
 const tradeExpectancyEl = document.getElementById("metric-trade-expectancy");
 const tradeMedianEl = document.getElementById("metric-trade-median");
 const tradeWinLossEl = document.getElementById("metric-trade-winloss");
+const tradePayoffEl = document.getElementById("metric-trade-payoff");
 const tradeBestEl = document.getElementById("metric-trade-best");
 const tradeWorstEl = document.getElementById("metric-trade-worst");
 const tradeTableBody = document.getElementById("trade-table");
@@ -54,6 +55,11 @@ const omegaEl = document.getElementById("metric-omega");
 const kellyEl = document.getElementById("metric-kelly");
 const streakWinEl = document.getElementById("metric-streak-win");
 const streakLossEl = document.getElementById("metric-streak-loss");
+const skewnessEl = document.getElementById("metric-skewness");
+const kurtosisEl = document.getElementById("metric-kurtosis");
+const avgDrawdownEl = document.getElementById("metric-avg-drawdown");
+const painEl = document.getElementById("metric-pain");
+const runupEl = document.getElementById("metric-runup");
 const mcMedianEl = document.getElementById("metric-mc-median");
 const mcP05El = document.getElementById("metric-mc-p05");
 const mcP95El = document.getElementById("metric-mc-p95");
@@ -76,6 +82,7 @@ const paperMarkMarketInput = document.getElementById("paper-mark-market");
 const paperMarkPriceInput = document.getElementById("paper-mark-price");
 const liveBalanceBtn = document.getElementById("live-balance-btn");
 const liveBalanceOutput = document.getElementById("live-balance-output");
+const alphaBriefingEl = document.getElementById("alpha-briefing");
 
 yearEl.textContent = new Date().getFullYear();
 
@@ -280,6 +287,21 @@ const updateRiskLabel = (value) => {
   riskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
 };
 
+const updateAlphaBriefing = (report) => {
+  if (!alphaBriefingEl) return;
+
+  const payoff = formatRatio(report.trade_summary.payoff_ratio || report.win_loss_ratio);
+  const lines = [
+    `• 켈리 권장 비중: ${formatPercent(report.kelly_fraction_pct)}`,
+    `• 평균 낙폭: ${formatPercent(report.average_drawdown_pct)} | 페인 인덱스: ${formatPercent(report.pain_index)}`,
+    `• 왜도/첨도: ${ratioFormatter.format(report.skewness)} / ${ratioFormatter.format(report.kurtosis)}`,
+    `• 최대 반등폭: ${formatPercent(report.max_runup_pct)} | 시장 노출: ${formatPercent(report.exposure_time_pct)}`,
+    `• 페이오프 비율: ${payoff}`,
+  ];
+
+  alphaBriefingEl.textContent = lines.join("\n");
+};
+
 async function simulateStrategy(formValues) {
   return requestApi("/strategies/simulate", {
     method: "POST",
@@ -300,6 +322,9 @@ function updateMetrics(report) {
   tradeExpectancyEl.textContent = `기대 ${ratioFormatter.format(report.trade_summary.expectancy_pct)}%`;
   tradeMedianEl.textContent = `중앙값 ${ratioFormatter.format(report.trade_summary.median_return_pct)}%`;
   tradeWinLossEl.textContent = `승패비 ${formatRatio(report.trade_summary.win_loss_ratio)}`;
+  if (tradePayoffEl) {
+    tradePayoffEl.textContent = `페이오프 ${formatRatio(report.trade_summary.payoff_ratio)}`;
+  }
   tradeBestEl.textContent = `최대수익 ${ratioFormatter.format(report.trade_summary.largest_win_pct)}%`;
   tradeWorstEl.textContent = `최대손실 ${ratioFormatter.format(report.trade_summary.largest_loss_pct)}%`;
 
@@ -323,11 +348,18 @@ function updateMetrics(report) {
   kellyEl.textContent = formatPercent(report.kelly_fraction_pct);
   streakWinEl.textContent = `${report.max_consecutive_wins}회`;
   streakLossEl.textContent = `${report.max_consecutive_losses}회`;
+  skewnessEl.textContent = ratioFormatter.format(report.skewness);
+  kurtosisEl.textContent = ratioFormatter.format(report.kurtosis);
+  avgDrawdownEl.textContent = formatPercent(report.average_drawdown_pct);
+  painEl.textContent = formatPercent(report.pain_index);
+  runupEl.textContent = formatPercent(report.max_runup_pct);
 
   mcMedianEl.textContent = formatPercent(report.monte_carlo_summary.median_return_pct);
   mcP05El.textContent = formatPercent(report.monte_carlo_summary.p05_return_pct);
   mcP95El.textContent = formatPercent(report.monte_carlo_summary.p95_return_pct);
   mcAvgEl.textContent = formatPercent(report.monte_carlo_summary.average_return_pct);
+
+  updateAlphaBriefing(report);
 }
 
 function renderTrades(trades) {
@@ -429,6 +461,7 @@ async function handleSimulation(event) {
   event?.preventDefault();
 
   const form = document.getElementById("strategy-form");
+  if (!form) return;
   const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
 
@@ -799,5 +832,5 @@ paperMarkForm?.addEventListener("submit", handlePaperMark);
 liveBalanceBtn?.addEventListener("click", handleLiveBalance);
 
 refreshApiStatus();
-handleSimulation();
 fetchPaperStatus();
+handleSimulation().catch(() => {});

@@ -108,13 +108,29 @@ body {
   gap: 2.5rem;
 }
 
-.panel {
+.panel { 
   background: var(--panel-bg);
   backdrop-filter: blur(24px);
   border: 1px solid var(--border);
   border-radius: 24px;
   padding: 2rem;
   box-shadow: var(--shadow);
+}
+
+.panel--alpha .alpha-briefing__body {
+  background: rgba(10, 16, 32, 0.78);
+  border-radius: 18px;
+  border: 1px solid rgba(122, 225, 255, 0.2);
+  padding: 1.5rem;
+}
+
+.panel--alpha pre {
+  font-family: 'Noto Sans KR', 'Pretendard', 'Apple SD Gothic Neo',
+    'Malgun Gothic', 'Nanum Gothic', 'Segoe UI', sans-serif;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  line-height: 1.8;
+  font-size: 1rem;
 }
 
 .panel--system .system-grid {
