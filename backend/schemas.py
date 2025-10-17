@@ -219,6 +219,7 @@ class PaperOrderPayload(BaseModel):
 class PaperBalancePayload(BaseModel):
     cash: float
     portfolio_value: float
+    last_updated: datetime
     positions: List[PaperPositionPayload]
     orders: List[PaperOrderPayload]
 

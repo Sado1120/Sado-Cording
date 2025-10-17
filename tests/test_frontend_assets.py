@@ -25,6 +25,8 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     for metric_id in required_metrics:
         assert metric_id in html, f"Dashboard should expose advanced metric card {metric_id}"
 
+    assert "paper-heartbeat" in html, "Paper heartbeat indicator should be present in the dashboard"
+
 
 def test_stylesheet_contains_korean_font_stack():
     css = (PROJECT_ROOT / "frontend" / "styles.css").read_text(encoding="utf-8")

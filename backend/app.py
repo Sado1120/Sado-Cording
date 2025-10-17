@@ -55,14 +55,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8501",
-        "http://127.0.0.1:8501",
-        "http://0.0.0.0:8501",
-        "https://localhost:8501",
-        "https://127.0.0.1:8501",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -99,6 +93,7 @@ def _serialize_balance(snapshot) -> PaperBalancePayload:
     return PaperBalancePayload(
         cash=snapshot.cash,
         portfolio_value=snapshot.portfolio_value,
+        last_updated=snapshot.last_update,
         positions=[_serialize_position(pos) for pos in snapshot.positions],
         orders=[_serialize_order(order) for order in snapshot.orders],
     )

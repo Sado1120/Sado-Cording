@@ -406,6 +406,12 @@ body {
   justify-content: space-between;
 }
 
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .status-card h3 {
   font-size: 1.2rem;
 }
@@ -474,6 +480,13 @@ body {
 .paper-balance__headline strong {
   font-size: 1.3rem;
   color: var(--accent);
+}
+
+.paper-balance__headline small {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgba(152, 161, 195, 0.8);
+  font-size: 0.75rem;
 }
 
 .paper-balance__section h4 {

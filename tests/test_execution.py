@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from fastapi import HTTPException
 
@@ -54,12 +56,16 @@ def test_paper_endpoints_support_reset_mark_and_order():
     )
     assert order_response.mode is OrderMode.PAPER
     assert order_response.balance.positions
+    first_timestamp = order_response.balance.last_updated
 
     mark_response = mark_paper(PaperMarkRequest(market="KRW-BTC", price=1_050_000))
     assert mark_response.positions[0].market_price == 1_050_000
+    assert mark_response.last_updated >= first_timestamp
 
     status_response = get_paper_status()
     assert status_response.portfolio_value > 0
+    assert status_response.last_updated >= mark_response.last_updated
+    assert status_response.last_updated <= datetime.utcnow()
 
 
 def test_live_order_requires_keys(monkeypatch):

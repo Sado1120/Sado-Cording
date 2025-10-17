@@ -80,6 +80,7 @@ const paperRefreshBtn = document.getElementById("paper-refresh-btn");
 const paperMarkForm = document.getElementById("paper-mark-form");
 const paperMarkMarketInput = document.getElementById("paper-mark-market");
 const paperMarkPriceInput = document.getElementById("paper-mark-price");
+const paperHeartbeatEl = document.getElementById("paper-heartbeat");
 const liveBalanceBtn = document.getElementById("live-balance-btn");
 const liveBalanceOutput = document.getElementById("live-balance-output");
 const alphaBriefingEl = document.getElementById("alpha-briefing");
@@ -107,6 +108,8 @@ yearEl.textContent = new Date().getFullYear();
 
 let chartInstance;
 let liveChartInstance;
+const paperSyncState = new Map();
+const PAPER_STATUS_INTERVAL = 30_000;
 
 const normaliseBase = (value) => {
   if (!value) {
@@ -128,6 +131,56 @@ const setApiBase = (value) => {
   }
   refreshApiStatus();
   handleSimulation();
+};
+
+const setPaperHeartbeat = (state, message) => {
+  if (!paperHeartbeatEl) return;
+  paperHeartbeatEl.dataset.status = state;
+  paperHeartbeatEl.textContent = message;
+};
+
+const formatDateTime = (date) =>
+  date.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+const formatRelativeTime = (date) => {
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 45_000) return "방금 전";
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+};
+
+const updatePaperHeartbeat = (balance) => {
+  if (!paperHeartbeatEl) return;
+  if (!balance?.last_updated) {
+    setPaperHeartbeat("offline", "상태 미확인");
+    return;
+  }
+
+  const updated = new Date(balance.last_updated);
+  if (Number.isNaN(updated.getTime())) {
+    setPaperHeartbeat("warning", "타임스탬프 오류");
+    return;
+  }
+
+  const diff = Date.now() - updated.getTime();
+  if (diff <= 90_000) {
+    setPaperHeartbeat("online", `실시간 연동 (${formatRelativeTime(updated)})`);
+  } else if (diff <= 300_000) {
+    setPaperHeartbeat("warning", `지연 (${formatRelativeTime(updated)})`);
+  } else {
+    setPaperHeartbeat("offline", `연결 끊김 (${formatRelativeTime(updated)})`);
+  }
 };
 
 const updateApiStatus = (state, message) => {
@@ -227,6 +280,33 @@ const updateLiveInsights = (insights, source) => {
     liveSourceEl.textContent = source === "synthetic" ? "시뮬레이터 데이터" : "업비트 실시간";
 };
 
+const syncPaperWithLivePrice = async (market, price, latestTimestamp, source) => {
+  if (!paperSummaryEl || !market || source !== "upbit") return;
+  const numericPrice = Number(price);
+  if (!Number.isFinite(numericPrice) || numericPrice <= 0) return;
+  const marketKey = market.toUpperCase();
+  const timestampKey =
+    typeof latestTimestamp === "string"
+      ? latestTimestamp
+      : new Date(latestTimestamp).toISOString();
+
+  if (paperSyncState.get(marketKey) === timestampKey) {
+    return;
+  }
+
+  try {
+    const balance = await requestApi("/trading/paper/mark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ market: marketKey, price: numericPrice }),
+    });
+    paperSyncState.set(marketKey, timestampKey);
+    updatePaperSummary(balance);
+  } catch (error) {
+    setPaperHeartbeat("warning", "시세 동기화 실패");
+  }
+};
+
 const refreshLiveMarket = async () => {
   if (!liveMarketInput || !liveIntervalSelect) return;
   const market = liveMarketInput.value.trim() || "KRW-BTC";
@@ -239,7 +319,9 @@ const refreshLiveMarket = async () => {
     const insightResponse = await requestApi(
       `/market/upbit/insights?market=${encodeURIComponent(market)}&interval=${interval}&count=200`
     );
-    updateLiveInsights(insightResponse, insightResponse.source || candleResponse.source);
+    const source = insightResponse.source || candleResponse.source;
+    updateLiveInsights(insightResponse, source);
+    await syncPaperWithLivePrice(market, insightResponse.latest_close, insightResponse.latest_timestamp, source);
   } catch (error) {
     if (liveSummaryEl) {
       liveSummaryEl.textContent = error.message;
@@ -308,6 +390,11 @@ const renderPaperSummary = (balance) => {
     return "페이퍼 계좌 정보를 불러오지 못했습니다.";
   }
 
+  const updatedAt = balance.last_updated ? new Date(balance.last_updated) : null;
+  const hasValidTimestamp = updatedAt && !Number.isNaN(updatedAt.getTime());
+  const lastUpdatedText = hasValidTimestamp ? formatDateTime(updatedAt) : "확인 필요";
+  const lastUpdatedRelative = hasValidTimestamp ? formatRelativeTime(updatedAt) : "";
+
   const headline = `
     <div class="paper-balance__headline">
       <div>
@@ -317,6 +404,11 @@ const renderPaperSummary = (balance) => {
       <div>
         <span>총자산 가치</span>
         <strong>${formatCurrency(balance.portfolio_value)} KRW</strong>
+      </div>
+      <div>
+        <span>마지막 업데이트</span>
+        <strong>${lastUpdatedText}</strong>
+        ${lastUpdatedRelative ? `<small>${lastUpdatedRelative}</small>` : ""}
       </div>
     </div>
   `;
@@ -393,15 +485,18 @@ const renderPaperSummary = (balance) => {
 const updatePaperSummary = (balance) => {
   if (!paperSummaryEl) return;
   paperSummaryEl.innerHTML = renderPaperSummary(balance);
+  updatePaperHeartbeat(balance);
 };
 
 const fetchPaperStatus = async () => {
   if (!paperSummaryEl) return;
+  setPaperHeartbeat("loading", "새로 고치는 중...");
   try {
     const balance = await requestApi("/trading/paper/status");
     updatePaperSummary(balance);
   } catch (error) {
     paperSummaryEl.innerHTML = `<p class="error">${error.message}</p>`;
+    setPaperHeartbeat("offline", "연결 실패");
   }
 };
 
@@ -866,6 +961,11 @@ const handleOrderSubmit = async (event) => {
     delete payload.price;
   }
 
+  const isPaperMode = (payload.mode || "paper") === "paper";
+  if (isPaperMode) {
+    setPaperHeartbeat("loading", "주문 처리 중...");
+  }
+
   try {
     const response = await requestApi("/trading/order", {
       method: "POST",
@@ -878,6 +978,9 @@ const handleOrderSubmit = async (event) => {
     }
   } catch (error) {
     orderResultEl.textContent = error.message;
+    if (isPaperMode) {
+      setPaperHeartbeat("warning", "주문 실패");
+    }
   }
 };
 
@@ -891,6 +994,7 @@ const handlePaperReset = async (event) => {
     }
     return;
   }
+  setPaperHeartbeat("loading", "리셋 중...");
   try {
     const balance = await requestApi("/trading/paper/reset", {
       method: "POST",
@@ -905,6 +1009,7 @@ const handlePaperReset = async (event) => {
     if (paperSummaryEl) {
       paperSummaryEl.innerHTML = `<p class="error">${error.message}</p>`;
     }
+    setPaperHeartbeat("warning", "리셋 실패");
   }
 };
 
@@ -919,6 +1024,7 @@ const handlePaperMark = async (event) => {
     }
     return;
   }
+  setPaperHeartbeat("loading", "시세 반영 중...");
   try {
     const balance = await requestApi("/trading/paper/mark", {
       method: "POST",
@@ -933,6 +1039,7 @@ const handlePaperMark = async (event) => {
     if (orderResultEl) {
       orderResultEl.textContent = error.message;
     }
+    setPaperHeartbeat("warning", "시세 반영 실패");
   }
 };
 
@@ -1001,3 +1108,6 @@ setInterval(() => {
 setInterval(() => {
   refreshNews().catch(() => {});
 }, 300_000);
+setInterval(() => {
+  fetchPaperStatus().catch(() => {});
+}, PAPER_STATUS_INTERVAL);

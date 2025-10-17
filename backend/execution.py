@@ -70,6 +70,7 @@ class PaperOrder:
 class BalanceSnapshot:
     cash: float
     portfolio_value: float
+    last_update: datetime
     positions: List[PaperPosition] = field(default_factory=list)
     orders: List[PaperOrder] = field(default_factory=list)
 
@@ -177,6 +178,7 @@ class PaperBroker:
         return BalanceSnapshot(
             cash=self.cash,
             portfolio_value=portfolio_value,
+            last_update=self.last_update,
             positions=positions,
             orders=self.orders[:20],
         )
