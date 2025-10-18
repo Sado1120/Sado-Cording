@@ -9,6 +9,7 @@ from typing import Callable, Iterable, List, Optional
 from . import ai
 from .execution import ExecutionError, PaperBroker, create_upbit_client_from_env
 from .market import MarketData, MarketDataError, fetch_authoritative_news, fetch_upbit_candles
+from .notifications import notify_synology_chat
 from .schemas import OrderMode
 from .trading import Candle
 
@@ -73,6 +74,7 @@ class AutoTrader:
         autopilot_builder: Callable[..., ai.AutoPilotOrderPlan] = ai.craft_autopilot_plan,
         portfolio_builder: Callable[..., ai.PortfolioAIPlan] = ai.optimise_portfolio,
         time_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        notifier: Optional[Callable[[str], bool]] = notify_synology_chat,
     ) -> None:
         self._broker = broker
         self._candle_fetcher = candle_fetcher
@@ -81,6 +83,7 @@ class AutoTrader:
         self._autopilot_builder = autopilot_builder
         self._portfolio_builder = portfolio_builder
         self._time_provider = time_provider
+        self._notifier = notifier
 
         self._config: Optional[AutoTraderConfig] = None
         self._state = AutoTraderState()
@@ -101,6 +104,7 @@ class AutoTrader:
             self._state.running = True
             self._stop_event.clear()
             self._append_log("info", "자동매매 오토파일럿을 시작합니다.")
+            self._safe_notify("자동매매 오토파일럿을 시작했습니다.")
 
         self.run_cycle()
         self._ensure_thread()
@@ -113,6 +117,7 @@ class AutoTrader:
             self._thread = None
             self._state.running = False
             self._append_log("info", "자동매매 오토파일럿을 중지했습니다.")
+            self._safe_notify("자동매매 오토파일럿을 중지했습니다.")
 
         if thread and thread.is_alive():
             thread.join(timeout=2)
@@ -166,6 +171,16 @@ class AutoTrader:
         with self._lock:
             self._state.logs.append(entry)
             self._state.logs = self._state.logs[-20:]
+        if level in {"trade", "error"}:
+            self._safe_notify(message)
+
+    def _safe_notify(self, message: str) -> None:
+        if not self._notifier:
+            return
+        try:
+            self._notifier(f"[Sado Trade Bot] {message}")
+        except Exception:  # pragma: no cover - notifications are best-effort
+            pass
 
     # ------------------------------------------------------------------
     # Trading logic

@@ -10,6 +10,10 @@ def test_analyse_market_with_synthetic():
     assert 0 <= insight.confidence_pct <= 100
     assert insight.timeframe_consensus.dominant_trend
     assert insight.timeframe_consensus.details
+    assert 0 <= insight.metrics.institutional_sentiment <= 1
+    assert insight.metrics.hurst_exponent >= 0
+    assert insight.institutional_confidence_pct >= 0
+    assert insight.institutional_commentary
 
 
 def test_optimise_portfolio_with_trend_adjustment():
@@ -44,6 +48,7 @@ def test_copilot_autopilot_generates_plan():
 
     assert autopilot.market == "KRW-BTC"
     assert autopilot.monitoring
+    assert any("기관" in item for item in autopilot.monitoring)
 
     synthesis = ai.generate_copilot_synthesis(
         question="지금 어떤 전략이 좋을까?",

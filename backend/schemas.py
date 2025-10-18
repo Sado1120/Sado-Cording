@@ -309,6 +309,13 @@ class MarketAIMetricsPayload(BaseModel):
     price_change_pct: float
     support_level: float
     resistance_level: float
+    atr: float
+    hurst_exponent: float
+    bollinger_bandwidth_pct: float
+    institutional_sentiment: float
+    liquidity_score: float
+    breakout_probability: float
+    volatility_regime: str
 
 
 class RiskControlAdvicePayload(BaseModel):
@@ -340,6 +347,8 @@ class MarketAIResponse(BaseModel):
     generated_at: datetime
     news: List[NewsItem]
     timeframe_consensus: "TimeframeConsensusPayload"
+    institutional_confidence_pct: float
+    institutional_commentary: str
 
 
 class PortfolioAssetInput(BaseModel):
@@ -500,3 +509,7 @@ class DiagnosticCheckPayload(BaseModel):
 class DiagnosticsResponse(BaseModel):
     generated_at: datetime
     checks: List[DiagnosticCheckPayload]
+
+
+class ChatNotificationRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)

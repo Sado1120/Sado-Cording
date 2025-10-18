@@ -114,6 +114,7 @@ const aiActionEl = document.getElementById("ai-action");
 const aiConfidenceEl = document.getElementById("ai-confidence");
 const aiRegimeEl = document.getElementById("ai-regime");
 const aiSummaryEl = document.getElementById("ai-summary");
+const aiInstitutionalEl = document.getElementById("ai-institutional");
 const aiSignalsEl = document.getElementById("ai-signals");
 const aiStopEl = document.getElementById("ai-stop");
 const aiTakeEl = document.getElementById("ai-take");
@@ -491,6 +492,11 @@ const renderMarketIntelligence = (insight) => {
   aiConfidenceEl.textContent = formatPercent(insight.confidence_pct);
   aiRegimeEl.textContent = insight.regime;
   aiSummaryEl.textContent = insight.summary;
+  if (aiInstitutionalEl) {
+    aiInstitutionalEl.textContent = `기관 신뢰도 ${formatPercent(
+      insight.institutional_confidence_pct
+    )} · ${insight.institutional_commentary}`;
+  }
 
   if (aiSignalsEl) {
     aiSignalsEl.innerHTML = "";

@@ -9,7 +9,7 @@ from typing import Iterable, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import ai, trading
+from . import ai, notifications, trading
 from .autopilot import AutoTrader, AutoTraderConfig, AutoTraderState
 from .schemas import (
     CandlePayload,
@@ -51,6 +51,7 @@ from .schemas import (
     AutoPilotStatusResponse,
     DiagnosticsResponse,
     DiagnosticCheckPayload,
+    ChatNotificationRequest,
 )
 from .execution import (
     ExecutionError,
@@ -256,6 +257,17 @@ def stop_autopilot() -> AutoPilotStatusResponse:
     return _autopilot_status_payload(state)
 
 
+@app.post("/notifications/chat")
+def post_chat_notification(payload: ChatNotificationRequest) -> dict:
+    sent = notifications.notify_synology_chat(payload.message)
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="Synology Chat 웹훅이 설정되지 않았거나 전송에 실패했습니다.",
+        )
+    return {"status": "sent"}
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -428,6 +440,8 @@ def get_market_intelligence(
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
         timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
+        institutional_confidence_pct=insight.institutional_confidence_pct,
+        institutional_commentary=insight.institutional_commentary,
     )
 
 
@@ -638,6 +652,8 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
         timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
+        institutional_confidence_pct=insight.institutional_confidence_pct,
+        institutional_commentary=insight.institutional_commentary,
     )
 
     return CopilotResponse(

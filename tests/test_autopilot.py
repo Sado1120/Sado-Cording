@@ -62,7 +62,7 @@ def _fake_autopilot_builder(**kwargs) -> ai.AutoPilotOrderPlan:
     )
 
 
-def _build_trader() -> tuple[AutoTrader, PaperBroker]:
+def _build_trader(notifier=lambda _message: True) -> tuple[AutoTrader, PaperBroker]:
     broker = PaperBroker()
     trader = AutoTrader(
         broker=broker,
@@ -72,6 +72,7 @@ def _build_trader() -> tuple[AutoTrader, PaperBroker]:
         autopilot_builder=_fake_autopilot_builder,
         portfolio_builder=lambda **_: None,
         time_provider=lambda: datetime.now(timezone.utc),
+        notifier=notifier,
     )
     return trader, broker
 
@@ -104,6 +105,34 @@ def test_autotrader_runs_single_cycle_and_places_order():
     finally:
         stop_state = trader.stop()
         assert stop_state.running is False
+
+
+def test_autotrader_notifier_invoked():
+    notifications: list[str] = []
+
+    def notifier(message: str) -> bool:
+        notifications.append(message)
+        return True
+
+    trader, _ = _build_trader(notifier=notifier)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=15_000_000,
+        poll_interval=300.0,
+        include_portfolio=False,
+        max_position_pct=0.25,
+        min_confidence_pct=50.0,
+    )
+
+    trader.start(config)
+    try:
+        assert notifications, "알림이 호출되지 않았습니다."
+        assert any("Sado Trade Bot" in message for message in notifications)
+    finally:
+        trader.stop()
 
 
 def test_autopilot_api_endpoints(monkeypatch):

@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from math import sqrt
+from math import log, sqrt
 from statistics import fmean, pstdev
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -29,6 +29,13 @@ class MarketAIMetrics:
     price_change_pct: float
     support_level: float
     resistance_level: float
+    atr: float = 0.0
+    hurst_exponent: float = 0.5
+    bollinger_bandwidth_pct: float = 0.0
+    institutional_sentiment: float = 0.5
+    liquidity_score: float = 0.0
+    breakout_probability: float = 0.0
+    volatility_regime: str = "중립"
 
 
 @dataclass
@@ -66,6 +73,8 @@ class MarketAIInsight:
     generated_at: datetime
     news: List[Dict[str, str]]
     timeframe_consensus: TimeframeConsensus
+    institutional_confidence_pct: float
+    institutional_commentary: str
 
 
 @dataclass
@@ -199,6 +208,142 @@ def _annualised_volatility(returns: Sequence[float], interval: str) -> float:
     return pstdev(returns) * sqrt(factor)
 
 
+def _average_true_range(candles: Sequence[Candle], period: int = 14) -> float:
+    if not candles:
+        return 0.0
+    tr_values: List[float] = []
+    prev_close: Optional[float] = None
+    for candle in candles[-max(period * 2, period) :]:
+        high_low = candle.high - candle.low
+        if prev_close is None:
+            true_range = high_low
+        else:
+            true_range = max(high_low, abs(candle.high - prev_close), abs(candle.low - prev_close))
+        tr_values.append(true_range)
+        prev_close = candle.close
+    if not tr_values:
+        return 0.0
+    return _ema(tr_values, min(period, len(tr_values)))
+
+
+def _bollinger_bandwidth(values: Sequence[float], period: int = 20) -> float:
+    if len(values) < period:
+        return 0.0
+    window = values[-period:]
+    mean_value = fmean(window)
+    if period <= 1:
+        return 0.0
+    std_dev = pstdev(window)
+    if mean_value == 0:
+        return 0.0
+    upper = mean_value + 2 * std_dev
+    lower = mean_value - 2 * std_dev
+    if mean_value == 0:
+        return 0.0
+    bandwidth = ((upper - lower) / abs(mean_value)) * 100
+    return float(bandwidth)
+
+
+def _hurst(values: Sequence[float]) -> float:
+    if len(values) < 32:
+        return 0.5
+    lags = range(2, min(20, len(values) // 2))
+    tau: List[float] = []
+    filtered_lags: List[int] = []
+    for lag in lags:
+        differences = [values[i + lag] - values[i] for i in range(len(values) - lag)]
+        if not differences:
+            continue
+        deviation = pstdev(differences)
+        if deviation <= 0:
+            continue
+        tau.append(sqrt(deviation))
+        filtered_lags.append(lag)
+    if len(tau) < 2 or len(filtered_lags) < 2:
+        return 0.5
+    log_lags = [log(lag) for lag in filtered_lags]
+    log_tau = [log(value) for value in tau]
+    mean_x = fmean(log_lags)
+    mean_y = fmean(log_tau)
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in zip(log_lags, log_tau))
+    denominator = sum((x - mean_x) ** 2 for x in log_lags)
+    if denominator == 0:
+        return 0.5
+    slope = numerator / denominator
+    hurst = max(0.0, min(1.0, 2 * slope))
+    return float(hurst)
+
+
+_POSITIVE_TERMS = ("상향", "호재", "기관", "승인", "도입", "투자", "수용", "ETF", "채택")
+_NEGATIVE_TERMS = ("하향", "경고", "중단", "제재", "규제", "소송", "해킹", "유출")
+
+
+def _news_sentiment(news_items: Optional[List[Dict[str, str]]]) -> float:
+    if not news_items:
+        return 0.5
+    score = 0.0
+    total_weight = 0.0
+    for item in news_items:
+        text = " ".join(
+            filter(
+                None,
+                [
+                    (item.get("title") or ""),
+                    (item.get("summary") or item.get("description") or ""),
+                    (item.get("source") or ""),
+                ],
+            )
+        ).lower()
+        weight = 1.0
+        if "sec" in text or "federal reserve" in text or "institut" in text:
+            weight += 0.4
+        if "msci" in text or "s&p" in text or "ftse" in text:
+            weight += 0.3
+        delta = 0.0
+        if any(term in text for term in _POSITIVE_TERMS):
+            delta += 1.0
+        if any(term in text for term in _NEGATIVE_TERMS):
+            delta -= 1.0
+        score += delta * weight
+        total_weight += weight
+    if total_weight == 0:
+        return 0.5
+    normalised = 0.5 + (score / (total_weight * 6))
+    return max(0.0, min(1.0, normalised))
+
+
+def _liquidity_pulse(candles: Sequence[Candle]) -> float:
+    volumes = [candle.volume for candle in candles if candle.volume is not None]
+    if len(volumes) < 10:
+        return 0.0
+    recent = fmean(volumes[-10:])
+    baseline = fmean(volumes[-60:]) if len(volumes) >= 60 else fmean(volumes)
+    if baseline == 0:
+        return 0.0
+    ratio = recent / baseline
+    return max(0.0, min(2.0, ratio))
+
+
+def _breakout_probability(
+    *,
+    trend_strength: float,
+    bandwidth_pct: float,
+    consensus: Optional[TimeframeConsensus],
+    institutional_sentiment: float,
+) -> float:
+    base = max(0.0, min(1.0, abs(trend_strength) * 6))
+    bandwidth_component = min(0.6, bandwidth_pct / 40)
+    consensus_component = 0.0
+    if consensus:
+        consensus_component = (consensus.agreement_pct / 100) * 0.3
+        if consensus.dominant_trend == "상승" and trend_strength > 0:
+            consensus_component += 0.1
+        if consensus.dominant_trend == "하락" and trend_strength < 0:
+            consensus_component += 0.1
+    institutional_component = (institutional_sentiment - 0.5) * 0.4
+    probability = base + bandwidth_component + consensus_component + institutional_component
+    return max(0.0, min(1.0, probability))
+
 def _support_resistance(candles: Sequence[Candle]) -> Tuple[float, float]:
     lows = [candle.low for candle in candles[-20:]]
     highs = [candle.high for candle in candles[-20:]]
@@ -293,6 +438,11 @@ def analyse_market(
     macd_value, macd_signal, macd_hist = _macd(closes[-60:])
     macd_norm = macd_hist / closes[-1] if closes else 0.0
 
+    atr_value = _average_true_range(candles[-120:])
+    atr_pct = (atr_value / closes[-1] * 100) if closes and closes[-1] else 0.0
+    bollinger_bandwidth = _bollinger_bandwidth(closes)
+    hurst = _hurst(closes[-180:])
+
     returns: List[float] = []
     for prev, current in zip(closes[:-1], closes[1:]):
         if prev == 0:
@@ -306,6 +456,24 @@ def analyse_market(
 
     price_change_pct = returns[-1] * 100 if returns else 0.0
     support, resistance = _support_resistance(candles)
+
+    consensus = build_timeframe_consensus(candles, market=market, interval=interval)
+
+    news_feed = news or fetch_authoritative_news(limit=6)
+    institutional_sentiment = _news_sentiment(news_feed)
+    liquidity_pulse = _liquidity_pulse(candles)
+    breakout_probability = _breakout_probability(
+        trend_strength=trend_strength,
+        bandwidth_pct=bollinger_bandwidth,
+        consensus=consensus,
+        institutional_sentiment=institutional_sentiment,
+    )
+
+    volatility_regime = "중립"
+    if bollinger_bandwidth >= 12 or atr_pct > 2.5:
+        volatility_regime = "확장"
+    elif bollinger_bandwidth <= 6 or atr_pct < 1.2:
+        volatility_regime = "축소"
 
     if trend_strength > 0.005 and rsi < 72 and macd_norm >= -0.002:
         regime = "강세 추세"
@@ -328,9 +496,16 @@ def analyse_market(
         recommended_action = "범위 매매 또는 대기"
         confidence = 45.0
 
+    confidence += (institutional_sentiment - 0.5) * 25
+    confidence += (liquidity_pulse - 1.0) * 10
+    if hurst < 0.45:
+        confidence -= 7
+    confidence = max(10.0, min(98.0, confidence))
+
     summary = (
         f"{market} {interval} 캔들 기준으로 EMA 격차는 {trend_strength * 100:.2f}%이며 RSI는 {rsi:.1f} 수준입니다. "
-        f"MACD 히스토그램은 {macd_norm * 100:.2f}%로 {'상승' if macd_norm >= 0 else '하락'} 압력이 우세합니다."
+        f"MACD 히스토그램은 {macd_norm * 100:.2f}%로 {'상승' if macd_norm >= 0 else '하락'} 압력이 우세합니다. "
+        f"ATR은 {atr_pct:.2f}%이며 변동성 국면은 {volatility_regime}로 평가됩니다."
     )
 
     signals = [
@@ -339,18 +514,44 @@ def analyse_market(
         f"RSI {rsi:.1f}",
         f"MACD {macd_value:.3f} / Signal {macd_signal:.3f}",
         f"연환산 변동성 {volatility * 100:.2f}%",
+        f"ATR {atr_pct:.2f}%",
+        f"밴드폭 {bollinger_bandwidth:.1f}%",
+        f"허스트 {hurst:.2f}",
+        f"기관 센티 {institutional_sentiment * 100:.1f}%",
+        f"유동성 펄스 {liquidity_pulse * 100:.1f}%",
     ]
 
+    stop_loss_pct = max(0.8, (volatility * 100) / 3)
+    stop_loss_pct *= 1 + max(0.0, (0.6 - institutional_sentiment) * 0.8)
+    if hurst < 0.45:
+        stop_loss_pct *= 1.1
+
+    take_profit_pct = min(30.0, max(3.0, (volatility * 100 / 2) * (0.8 + breakout_probability)))
+    trailing_stop_pct = min(18.0, max(2.0, abs(macd_norm) * 100 * (0.6 + breakout_probability)))
+
+    position_size_pct = max(1.0, 5.0 - probability_of_trend * 2)
+    position_size_pct *= (0.85 + institutional_sentiment * 0.5)
+    position_size_pct *= (0.7 + min(liquidity_pulse, 1.5) * 0.2)
+    if hurst < 0.45:
+        position_size_pct *= 0.8
+    position_size_pct = max(0.8, min(18.0, position_size_pct))
+
+    risk_notes = [
+        "변동성 확장 국면에서는 손절폭을 넓히되 포지션을 나눠 진입하세요.",
+        "기관 뉴스가 부정적이면 포지션 사이즈를 축소하고 헤지 비중을 검토하세요.",
+    ]
+    if volatility_regime == "축소":
+        risk_notes.append("박스권 가능성이 커 포지션을 줄이고 돌파 시 재진입을 권장합니다.")
+    if breakout_probability > 0.55:
+        risk_notes.append("돌파 확률이 높아 트레일링 스톱을 적극 활용하세요.")
+
     risk = RiskControlAdvice(
-        stop_loss_pct=max(0.8, (volatility * 100) / 3),
-        take_profit_pct=min(25.0, max(3.0, volatility * 100 / 2)),
-        trailing_stop_pct=min(15.0, max(2.0, abs(macd_norm) * 100)),
-        position_size_pct=max(1.0, 5.0 - probability_of_trend * 2),
-        confidence_note="신호 강도에 기반하여 포지션 규모 자동 조정",
-        notes=[
-            "변동성이 높을수록 목표 수익과 손절폭을 넓게 설정하세요.",
-            "박스권 시에는 포지션을 축소하고 포트폴리오 재조정을 우선시합니다.",
-        ],
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        trailing_stop_pct=trailing_stop_pct,
+        position_size_pct=position_size_pct,
+        confidence_note="신호·기관 센티먼트·유동성 기반 동적 포지션 관리",
+        notes=risk_notes,
     )
 
     metrics = MarketAIMetrics(
@@ -367,9 +568,19 @@ def analyse_market(
         price_change_pct=price_change_pct,
         support_level=support,
         resistance_level=resistance,
+        atr=atr_pct,
+        hurst_exponent=hurst,
+        bollinger_bandwidth_pct=bollinger_bandwidth,
+        institutional_sentiment=institutional_sentiment,
+        liquidity_score=liquidity_pulse,
+        breakout_probability=breakout_probability,
+        volatility_regime=volatility_regime,
     )
 
-    consensus = build_timeframe_consensus(candles, market=market, interval=interval)
+    institutional_commentary = (
+        f"기관/뉴스 신뢰도 {institutional_sentiment * 100:.1f}% · 유동성 펄스 {liquidity_pulse * 100:.1f}% · "
+        f"돌파 확률 {breakout_probability * 100:.1f}%"
+    )
 
     return MarketAIInsight(
         market=market,
@@ -382,8 +593,10 @@ def analyse_market(
         metrics=metrics,
         risk=risk,
         generated_at=datetime.now(timezone.utc),
-        news=news or fetch_authoritative_news(limit=4),
+        news=news_feed,
         timeframe_consensus=consensus,
+        institutional_confidence_pct=institutional_sentiment * 100,
+        institutional_commentary=institutional_commentary,
     )
 
 
@@ -704,12 +917,17 @@ def craft_autopilot_plan(
         f"지지선 {support_level:,.0f}" if support_level else "지지선 데이터 부족",
         f"저항선 {resistance_level:,.0f}" if resistance_level else "저항선 데이터 부족",
         f"연환산 변동성 {insight.metrics.volatility_pct:.2f}%",
+        f"변동성 국면 {insight.metrics.volatility_regime}",
+        f"돌파 확률 {insight.metrics.breakout_probability * 100:.1f}%",
     ]
 
     reasoning = [
         f"EMA 격차 {insight.metrics.trend_strength * 100:.2f}%",  # trend indication
         f"RSI {insight.metrics.rsi:.1f}",
         f"MACD 히스토그램 {insight.metrics.macd_histogram:.3f}",
+        f"허스트 {insight.metrics.hurst_exponent:.2f}",
+        f"기관 센티 {insight.metrics.institutional_sentiment * 100:.1f}%",
+        f"유동성 펄스 {insight.metrics.liquidity_score * 100:.1f}%",
     ]
 
     consensus = insight.timeframe_consensus
@@ -741,6 +959,8 @@ def craft_autopilot_plan(
             if detail not in monitoring:
                 monitoring.append(detail)
 
+    monitoring.append(insight.institutional_commentary)
+
     return AutoPilotOrderPlan(
         market=insight.market,
         side=side,
@@ -771,6 +991,7 @@ def generate_copilot_synthesis(
         f"{insight.market} {insight.interval} · {insight.regime} ({insight.confidence_pct:.1f}% 신뢰도)",
         f"EMA {insight.metrics.fast_ema:,.0f}/{insight.metrics.slow_ema:,.0f} · RSI {insight.metrics.rsi:.1f}",
         f"연환산 변동성 {insight.metrics.volatility_pct:.2f}% · 최근 변화 {insight.metrics.price_change_pct:.2f}%",
+        f"기관 신뢰도 {insight.institutional_confidence_pct:.1f}% · 돌파 확률 {insight.metrics.breakout_probability * 100:.1f}%",
     ]
 
     consensus = insight.timeframe_consensus
@@ -806,6 +1027,7 @@ def generate_copilot_synthesis(
         action_items.append("추세 모호 · 포지션 축소 또는 관망 유지")
 
     risk_notices = [f"모니터링: {item}" for item in autopilot.monitoring]
+    risk_notices.append(f"기관 브리핑: {insight.institutional_commentary}")
     if consensus and consensus.details:
         risk_notices.append(f"컨센서스 상세: {consensus.details[0]}")
     if mode == "live":

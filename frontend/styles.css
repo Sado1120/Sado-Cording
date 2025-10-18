@@ -217,6 +217,13 @@ body {
   font-size: 0.95rem;
 }
 
+.ai-intel__institutional {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--accent-muted);
+  line-height: 1.4;
+}
+
 .ai-signals {
   list-style: none;
   display: grid;
