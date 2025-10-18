@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Literal, Optional, Tuple
@@ -68,6 +70,17 @@ _INTERVAL_PATHS: Dict[Interval, Tuple[str, Optional[str]]] = {
 
 _UPBIT_API_BASE = "https://api.upbit.com"
 
+_UPBIT_ENABLE_NETWORK = os.getenv("UPBIT_ENABLE_NETWORK", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+}
+_UPBIT_NETWORK_BACKOFF_SECONDS = 300.0
+_upbit_network_state = {
+    "status": "unknown",  # "up" | "down" | "unknown"
+    "checked_at": 0.0,
+}
+
 
 _FALLBACK_MARKETS: List[MarketInfo] = [
     MarketInfo(
@@ -117,6 +130,21 @@ def _parse_upbit_timestamp(value: str) -> datetime:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
 
 
+def _upbit_network_down() -> bool:
+    if not _UPBIT_ENABLE_NETWORK:
+        return True
+    state = _upbit_network_state
+    if state["status"] != "down":
+        return False
+    elapsed = time.monotonic() - state["checked_at"]
+    return elapsed < _UPBIT_NETWORK_BACKOFF_SECONDS
+
+
+def _mark_network(status: str) -> None:
+    _upbit_network_state["status"] = status
+    _upbit_network_state["checked_at"] = time.monotonic()
+
+
 def fetch_upbit_candles(
     market: str = "KRW-BTC",
     *,
@@ -135,6 +163,10 @@ def fetch_upbit_candles(
         raise MarketDataError("지원하지 않는 캔들 주기입니다.")
 
     count = max(10, min(count, 200))
+    if _upbit_network_down():
+        synthetic = generate_synthetic_prices(days=count)
+        return MarketData(candles=synthetic, source="synthetic")
+
     interval_path, unit = _INTERVAL_PATHS[interval]
     if unit:
         path = f"/v1/candles/{interval_path}/{unit}"
@@ -146,16 +178,20 @@ def fetch_upbit_candles(
     request = Request(url, headers={"Accept": "application/json"})
 
     try:
-        with urlopen(request, timeout=5) as response:
+        with urlopen(request, timeout=3) as response:
             raw = response.read().decode("utf-8")
             if not raw:
                 raise MarketDataError("업비트에서 빈 응답을 받았습니다.")
             payload = json.loads(raw)
     except (HTTPError, URLError, TimeoutError, OSError):  # pragma: no cover - integration failures
+        _mark_network("down")
         synthetic = generate_synthetic_prices(days=count)
         return MarketData(candles=synthetic, source="synthetic")
     except json.JSONDecodeError as exc:
+        _mark_network("down")
         raise MarketDataError("업비트 응답을 해석하지 못했습니다.") from exc
+    else:
+        _mark_network("up")
 
     if not isinstance(payload, Iterable):
         raise MarketDataError("업비트 응답 형식이 올바르지 않습니다.")
@@ -193,19 +229,26 @@ def _fallback_markets(only_krw: bool) -> List[MarketInfo]:
 def fetch_upbit_markets(*, only_krw: bool = True) -> MarketList:
     """Return tradable markets from Upbit or a deterministic fallback list."""
 
+    if _upbit_network_down():
+        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+
     url = f"{_UPBIT_API_BASE}/v1/market/all?isDetails=true"
     request = Request(url, headers={"Accept": "application/json"})
 
     try:
-        with urlopen(request, timeout=5) as response:
+        with urlopen(request, timeout=3) as response:
             raw = response.read().decode("utf-8")
             if not raw:
                 raise MarketDataError("업비트에서 빈 마켓 목록을 받았습니다.")
             payload = json.loads(raw)
     except (HTTPError, URLError, TimeoutError, OSError):  # pragma: no cover - network failure
+        _mark_network("down")
         return MarketList(markets=_fallback_markets(only_krw), source="fallback")
     except json.JSONDecodeError:  # pragma: no cover - malformed upstream response
+        _mark_network("down")
         return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+    else:
+        _mark_network("up")
 
     markets: List[MarketInfo] = []
     for item in payload:

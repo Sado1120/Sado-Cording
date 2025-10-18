@@ -175,7 +175,7 @@ Synology 컨테이너 매니저에 복사할 때는 "Git 적용 복사"로 전�
 
 ## 실거래 & 페이퍼 트레이딩 운용 방법
 
-1. **환경 변수 설정** – 업비트 실거래를 사용하려면 `.env`에 `UPBIT_ACCESS_KEY`, `UPBIT_SECRET_KEY`, (선택) `UPBIT_BASE_URL`을 입력하고 `uvicorn --env-file .env backend.app:app`으로 서버를 기동하세요. Synology Chat으로 체결/경고를 받고 싶다면 동일한 `.env`에 `SADO_CHAT_WEBHOOK=https://chat.example.com/webhook/...` 형식의 URL을 추가하세요.
+1. **환경 변수 설정** – 업비트 실거래를 사용하려면 `.env`에 `UPBIT_ACCESS_KEY`, `UPBIT_SECRET_KEY`, (선택) `UPBIT_BASE_URL`을 입력하고 `uvicorn --env-file .env backend.app:app`으로 서버를 기동하세요. Synology Chat으로 체결/경고를 받고 싶다면 동일한 `.env`에 `SADO_CHAT_WEBHOOK=https://chat.example.com/webhook/...` 형식의 URL을 추가하세요. 업비트 외부망이 차단된 공장망이나 프록시 지연이 심한 환경에서는 `UPBIT_ENABLE_NETWORK=0`을 지정하면 백엔드가 즉시 합성 시세로 전환하여 대시보드 타임아웃을 방지합니다.
 2. **대시보드에서 모드 선택** – "실거래 & 페이퍼 트레이딩 콘솔" 패널의 라디오 버튼을 이용해 `페이퍼 트레이딩` 또는 `실거래 (Upbit)`를 선택합니다.
 3. **주문 입력** – 마켓, 방향, 주문 유형, 수량/가격을 입력 후 `주문 실행` 버튼을 누르면 백엔드 `/trading/order` API가 호출됩니다.
    - 페이퍼 모드에서는 `PaperBroker`가 즉시 체결·잔고·실현손익을 계산하고, 결과가 대시보드 카드에 JSON으로 표시됩니다.

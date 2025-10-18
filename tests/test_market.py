@@ -32,6 +32,22 @@ def test_fetch_upbit_candles_fallback(monkeypatch):
     assert len(data.candles) == 20
 
 
+def test_fetch_upbit_candles_offline_mode(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("UPBIT_ENABLE_NETWORK", "0")
+    module = importlib.reload(__import__("backend.market", fromlist=["*"]))
+    data = module.fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert data.source == "synthetic"
+
+    listing = module.fetch_upbit_markets()
+    assert listing.source == "fallback"
+
+    # Restore module state for other tests
+    monkeypatch.delenv("UPBIT_ENABLE_NETWORK")
+    importlib.reload(__import__("backend.market", fromlist=["*"]))
+
+
 def test_build_market_insights_from_synthetic():
     candles = generate_synthetic_prices(days=60, seed=123)
     insights = build_market_insights(candles, market="KRW-BTC", interval="minute1")
