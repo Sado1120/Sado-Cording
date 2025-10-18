@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from time import perf_counter
 from typing import Iterable, Optional
@@ -458,12 +459,66 @@ def _format_recommendation_reason(insight: ai.MarketAIInsight) -> str:
     )
 
 
+def _evaluate_market_candidate(
+    info: MarketInfo,
+    interval: str,
+) -> tuple[str, Optional[MarketRecommendationPayload], Optional[str]]:
+    """Analyse a single market and return status, payload, and data source."""
+
+    try:
+        candle_data = fetch_upbit_candles(market=info.market, interval=interval, count=200)
+    except MarketDataError as exc:
+        return (f"{info.market}: {exc}", None, None)
+    except Exception as exc:  # pragma: no cover - unexpected failure path
+        return (f"{info.market}: {exc}", None, None)
+
+    if len(candle_data.candles) < 30:
+        return (f"{info.market}: 캔들이 부족합니다", None, candle_data.source)
+
+    try:
+        insight = ai.analyse_market(
+            candle_data.candles,
+            market=info.market,
+            interval=interval,
+        )
+    except Exception as exc:
+        return (f"{info.market}: {exc}", None, candle_data.source)
+
+    score = _score_market_recommendation(insight)
+    reason = _format_recommendation_reason(insight)
+    metrics = insight.metrics
+    last_price = candle_data.candles[-1].close
+
+    payload = MarketRecommendationPayload(
+        market=info.market,
+        korean_name=info.korean_name,
+        english_name=info.english_name,
+        base_currency=info.base_currency,
+        quote_currency=info.quote_currency,
+        score=round(score, 2),
+        confidence_pct=insight.confidence_pct,
+        regime=insight.regime,
+        recommended_action=insight.recommended_action,
+        last_price=last_price,
+        price_change_pct=metrics.price_change_pct,
+        trend_strength_pct=metrics.trend_strength * 100,
+        volatility_pct=metrics.volatility_pct,
+        institutional_sentiment_pct=metrics.institutional_sentiment * 100,
+        breakout_probability_pct=metrics.breakout_probability * 100,
+        summary=insight.summary,
+        reason=reason,
+        source=candle_data.source,
+    )
+
+    return ("", payload, candle_data.source)
+
+
 @app.get("/market/recommendations", response_model=MarketRecommendationsResponse)
 def get_market_recommendations(
     base: str = "KRW",
     interval: str = "minute60",
     limit: int = 5,
-    max_markets: int = 60,
+    max_markets: int = 30,
     include_warnings: bool = False,
 ) -> MarketRecommendationsResponse:
     start = perf_counter()
@@ -486,64 +541,39 @@ def get_market_recommendations(
         candidates.append(item)
 
     candidates.sort(key=lambda info: info.market)
+    targets = candidates[:max_markets]
     analysed = 0
     errors: list[str] = []
     scores: list[MarketRecommendationPayload] = []
     data_sources: set[str] = set()
 
-    for info in candidates[:max_markets]:
-        try:
-            candle_data = fetch_upbit_candles(market=info.market, interval=interval, count=200)
-        except MarketDataError as exc:
-            errors.append(f"{info.market}: {exc}")
-            continue
-        except Exception as exc:  # pragma: no cover - unexpected failure path
-            errors.append(f"{info.market}: {exc}")
-            continue
+    if targets:
+        max_workers = min(8, len(targets)) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(_evaluate_market_candidate, info, interval): info.market
+                for info in targets
+            }
+            for future in as_completed(future_map):
+                try:
+                    error, payload, source = future.result()
+                except Exception as exc:  # pragma: no cover - unexpected failure path
+                    errors.append(f"{future_map[future]}: {exc}")
+                    continue
 
-        data_sources.add(candle_data.source)
-        if len(candle_data.candles) < 30:
-            errors.append(f"{info.market}: 캔들이 부족합니다")
-            continue
+                if error:
+                    errors.append(error)
+                    if source:
+                        data_sources.add(source)
+                    continue
 
-        try:
-            insight = ai.analyse_market(
-                candle_data.candles,
-                market=info.market,
-                interval=interval,
-            )
-        except Exception as exc:
-            errors.append(f"{info.market}: {exc}")
-            continue
+                if payload is None:
+                    continue
 
-        analysed += 1
-        score = _score_market_recommendation(insight)
-        reason = _format_recommendation_reason(insight)
-        metrics = insight.metrics
-        last_price = candle_data.candles[-1].close
-
-        scores.append(
-            MarketRecommendationPayload(
-                market=info.market,
-                korean_name=info.korean_name,
-                english_name=info.english_name,
-                base_currency=info.base_currency,
-                quote_currency=info.quote_currency,
-                score=round(score, 2),
-                confidence_pct=insight.confidence_pct,
-                regime=insight.regime,
-                recommended_action=insight.recommended_action,
-                last_price=last_price,
-                price_change_pct=metrics.price_change_pct,
-                trend_strength_pct=metrics.trend_strength * 100,
-                volatility_pct=metrics.volatility_pct,
-                institutional_sentiment_pct=metrics.institutional_sentiment * 100,
-                breakout_probability_pct=metrics.breakout_probability * 100,
-                summary=insight.summary,
-                reason=reason,
-                source=candle_data.source,
-            )
-        )
+                analysed += 1
+                scores.append(payload)
+                if source:
+                    data_sources.add(source)
 
     scores.sort(key=lambda item: item.score, reverse=True)
     top_recommendations = scores[:limit]
