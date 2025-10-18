@@ -17,6 +17,8 @@ from .schemas import (
     LiveBalancesResponse,
     MarketCandlesResponse,
     MarketInsightsResponse,
+    MarketInfoPayload,
+    MarketListResponse,
     NewsItem,
     NewsResponse,
     CopilotRequest,
@@ -52,6 +54,8 @@ from .schemas import (
     DiagnosticsResponse,
     DiagnosticCheckPayload,
     ChatNotificationRequest,
+    ChatNotificationStatus,
+    MarketGroupPayload,
 )
 from .execution import (
     ExecutionError,
@@ -66,6 +70,7 @@ from .market import (
     build_market_insights,
     fetch_authoritative_news,
     fetch_upbit_candles,
+    fetch_upbit_markets,
 )
 
 
@@ -86,6 +91,8 @@ app.add_middleware(
 
 _paper_broker: PaperBroker = paper_broker()
 _auto_trader = AutoTrader(broker=_paper_broker)
+_paper_market_preference = "KRW-BTC"
+_paper_interval_preference = "minute1"
 
 
 def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse:
@@ -268,6 +275,12 @@ def post_chat_notification(payload: ChatNotificationRequest) -> dict:
     return {"status": "sent"}
 
 
+@app.get("/notifications/chat/status", response_model=ChatNotificationStatus)
+def get_chat_notification_status() -> ChatNotificationStatus:
+    status = notifications.get_synology_chat_status()
+    return ChatNotificationStatus(**status)
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -275,8 +288,10 @@ def health() -> dict:
 
 @app.post("/strategies/simulate", response_model=SimulationResponse)
 def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
-    candles = (
-        [
+    candles: list[trading.Candle]
+
+    if payload.prices:
+        candles = [
             trading.Candle(
                 timestamp=item.timestamp,
                 open=item.open,
@@ -287,9 +302,23 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
             )
             for item in payload.prices
         ]
-        if payload.prices
-        else trading.generate_synthetic_prices(seed=payload.seed)
-    )
+    elif payload.use_live_data or payload.market:
+        market_code = (payload.market or "KRW-BTC").upper()
+        interval = payload.interval or "minute60"
+        try:
+            market_data = fetch_upbit_candles(
+                market=market_code,
+                interval=interval,  # type: ignore[arg-type]
+                count=200,
+            )
+            candles = market_data.candles
+        except MarketDataError:
+            candles = []
+
+        if not candles:
+            candles = trading.generate_synthetic_prices(seed=payload.seed)
+    else:
+        candles = trading.generate_synthetic_prices(seed=payload.seed)
 
     try:
         report = trading.run_ema_strategy(
@@ -356,6 +385,30 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         equity_curve=report.equity_curve,
         trade_summary=trade_summary,
         monte_carlo_summary=report.monte_carlo_summary,
+    )
+
+
+@app.get("/market/list", response_model=MarketListResponse)
+def list_markets(only_krw: bool = True) -> MarketListResponse:
+    listing = fetch_upbit_markets(only_krw=only_krw)
+    markets = [
+        MarketInfoPayload(
+            market=item.market,
+            korean_name=item.korean_name,
+            english_name=item.english_name,
+            base_currency=item.base_currency,
+            quote_currency=item.quote_currency,
+            market_warning=item.market_warning,
+            trading_suspended=item.trading_suspended,
+        )
+        for item in listing.markets
+    ]
+
+    return MarketListResponse(
+        generated_at=datetime.utcnow(),
+        source=listing.source,
+        markets=markets,
+        groups=_build_market_groups(markets),
     )
 
 
@@ -459,10 +512,131 @@ def diagnostics_full() -> DiagnosticsResponse:
     return _diagnostics_summary()
 
 
-def _paper_status_response() -> PaperStatusResponse:
+def _refresh_paper_market(market: str, *, interval: str = "minute1") -> str:
+    price_source = "manual"
+    try:
+        market_data = fetch_upbit_candles(market=market, interval=interval, count=1)
+    except MarketDataError:
+        return price_source
+
+    if not market_data.candles:
+        return price_source
+
+    last_price = market_data.candles[-1].close
+    try:
+        _paper_broker.mark_price(market=market, price=last_price)
+    except ExecutionError:
+        # Heartbeat best-effort; ignore failures so the status endpoint keeps working.
+        return price_source
+
+    return market_data.source
+
+
+def _paper_heartbeat(price_source: str, last_updated: datetime) -> tuple[str, str]:
+    """Return dashboard-friendly heartbeat state and reason."""
+
+    now = datetime.utcnow()
+    delta_seconds = max(0.0, (now - last_updated).total_seconds())
+
+    if price_source == "upbit":
+        if delta_seconds <= 90:
+            return ("online", "live")
+        if delta_seconds <= 300:
+            return ("warning", "delayed")
+        return ("offline", "stale")
+
+    if price_source == "synthetic":
+        if delta_seconds <= 600:
+            return ("warning", "synthetic")
+        return ("offline", "synthetic")
+
+    if delta_seconds <= 600:
+        return ("warning", "manual")
+    return ("offline", "manual")
+
+
+def _paper_status_response(*, market: Optional[str] = None, interval: str = "minute1") -> PaperStatusResponse:
+    global _paper_market_preference, _paper_interval_preference
+
+    explicit_refresh = market is not None
+    target_market = (market or _paper_market_preference or "KRW-BTC").upper()
+    target_interval = interval or _paper_interval_preference or "minute1"
+    _paper_market_preference = target_market
+    _paper_interval_preference = target_interval
+
+    price_source = "manual"
+    if explicit_refresh and target_market:
+        source = _refresh_paper_market(market=target_market, interval=target_interval)
+        if source in {"upbit", "synthetic"}:
+            price_source = source
+
     snapshot = _paper_broker.snapshot()
     balance = _serialize_balance(snapshot)
-    return PaperStatusResponse(**balance.dict())
+    payload = balance.dict()
+    heartbeat_state, heartbeat_reason = _paper_heartbeat(price_source, balance.last_updated)
+    payload.update(
+        {
+            "price_source": price_source,
+            "market": target_market,
+            "interval": target_interval,
+            "heartbeat_state": heartbeat_state,
+            "heartbeat_reason": heartbeat_reason,
+        }
+    )
+    return PaperStatusResponse(**payload)
+
+
+def _build_market_groups(markets: list[MarketInfoPayload]) -> list[MarketGroupPayload]:
+    if not markets:
+        return []
+
+    groups: list[MarketGroupPayload] = []
+    base_map: dict[str, list[str]] = {}
+    for item in markets:
+        base = item.base_currency.upper()
+        base_map.setdefault(base, []).append(item.market)
+
+    def add_group(key: str, label: str, description: str, codes: Iterable[str]) -> None:
+        unique_codes = sorted({code.upper() for code in codes if code})
+        if unique_codes:
+            groups.append(
+                MarketGroupPayload(
+                    key=key,
+                    label=label,
+                    description=description,
+                    markets=unique_codes,
+                )
+            )
+
+    majors_reference = [
+        "KRW-BTC",
+        "KRW-ETH",
+        "KRW-XRP",
+        "KRW-SOL",
+        "KRW-ADA",
+        "KRW-MATIC",
+        "KRW-DOGE",
+        "KRW-LINK",
+        "KRW-BCH",
+    ]
+    available_markets = {item.market for item in markets}
+    add_group(
+        "majors",
+        "대표 코인",
+        "업비트에서 가장 많이 거래되는 대표 종목",
+        [code for code in majors_reference if code in available_markets],
+    )
+    add_group("krw", "KRW 마켓", "원화 기준 전체 종목", base_map.get("KRW", []))
+    add_group("usdt", "USDT 마켓", "테더 기반 글로벌 페어", base_map.get("USDT", []))
+    add_group("btc", "BTC 마켓", "비트코인 기반 페어", base_map.get("BTC", []))
+
+    warning_codes = [item.market for item in markets if item.market_warning != "NONE"]
+    add_group("warning", "투자 유의", "투자 유의 종목은 리스크 확인 필요", warning_codes)
+
+    suspended_codes = [item.market for item in markets if item.trading_suspended]
+    add_group("suspended", "거래 일시 중지", "점검 또는 유동성 부족으로 제한된 종목", suspended_codes)
+
+    return groups
 
 
 def _run_check(name: str, func) -> DiagnosticCheckPayload:
@@ -731,8 +905,8 @@ def submit_order(payload: OrderRequest) -> OrderResponse:
 
 
 @app.get("/trading/paper/status", response_model=PaperStatusResponse)
-def get_paper_status() -> PaperStatusResponse:
-    return _paper_status_response()
+def get_paper_status(market: str = "KRW-BTC", interval: str = "minute1") -> PaperStatusResponse:
+    return _paper_status_response(market=market.upper(), interval=interval)
 
 
 @app.post("/trading/paper/reset", response_model=PaperStatusResponse)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 from functools import partial
@@ -96,7 +97,7 @@ class DashboardRequestHandler(UTF8RequestHandler):
             return
         except (URLError, TimeoutError, OSError) as exc:
             message = f"백엔드에 연결할 수 없습니다: {exc}"
-            payload = message.encode("utf-8")
+            payload = json.dumps({"detail": message}).encode("utf-8")
             self.send_response(502)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))

@@ -1,14 +1,19 @@
 from datetime import datetime
 
 import pytest
-from fastapi import HTTPException
+from datetime import datetime
 
+import pytest
+
+from backend import trading
 from backend.app import (
     get_paper_status,
     mark_paper,
     reset_paper,
     submit_order,
 )
+from fastapi import HTTPException
+
 from backend.execution import ExecutionError, PaperBroker, create_upbit_client_from_env, paper_broker
 from backend.schemas import OrderMode, OrderRequest, PaperMarkRequest, PaperResetRequest
 
@@ -61,11 +66,62 @@ def test_paper_endpoints_support_reset_mark_and_order():
     mark_response = mark_paper(PaperMarkRequest(market="KRW-BTC", price=1_050_000))
     assert mark_response.positions[0].market_price == 1_050_000
     assert mark_response.last_updated >= first_timestamp
+    assert mark_response.price_source == "manual"
+    assert mark_response.market == "KRW-BTC"
+    assert mark_response.interval == "minute1"
 
     status_response = get_paper_status()
     assert status_response.portfolio_value > 0
     assert status_response.last_updated >= mark_response.last_updated
     assert status_response.last_updated <= datetime.utcnow()
+    assert status_response.price_source in {"manual", "synthetic", "upbit"}
+    assert status_response.market == "KRW-BTC"
+    assert status_response.interval == "minute1"
+    assert status_response.heartbeat_state in {"online", "warning", "offline"}
+    assert status_response.heartbeat_reason in {"live", "delayed", "manual", "synthetic", "stale"}
+
+
+def test_get_paper_status_refreshes_market(monkeypatch):
+    reset_paper(PaperResetRequest(initial_cash=2_000_000))
+
+    class DummyData:
+        def __init__(self, price: float):
+            self.candles = [
+                trading.Candle(
+                    timestamp=datetime.utcnow(),
+                    open=price,
+                    high=price,
+                    low=price,
+                    close=price,
+                    volume=1.0,
+                )
+            ]
+            self.source = "upbit"
+
+    captured = {}
+
+    def fake_fetch(*, market: str, interval: str, count: int):  # noqa: ARG001
+        captured["market"] = market
+        captured["interval"] = interval
+        return DummyData(price=31_000_000)
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    first = get_paper_status(market="krw-eth", interval="minute15")
+    second = get_paper_status(market="KRW-ETH", interval="minute15")
+
+    assert captured["market"] == "KRW-ETH"
+    assert captured["interval"] == "minute15"
+    assert second.last_updated >= first.last_updated
+    assert second.last_updated <= datetime.utcnow()
+    assert first.price_source == "upbit"
+    assert second.price_source == "upbit"
+    assert first.market == "KRW-ETH"
+    assert first.interval == "minute15"
+    assert second.market == "KRW-ETH"
+    assert second.interval == "minute15"
+    assert first.heartbeat_state in {"online", "warning", "offline"}
+    assert second.heartbeat_state in {"online", "warning", "offline"}
 
 
 def test_market_orders_use_marked_price_and_hide_empty_positions():

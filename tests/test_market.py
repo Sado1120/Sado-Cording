@@ -7,7 +7,15 @@ from backend.app import (
     get_upbit_candles,
     optimize_portfolio,
 )
-from backend.market import MarketData, build_market_insights, fetch_authoritative_news, fetch_upbit_candles
+from backend.market import (
+    MarketData,
+    MarketInfo,
+    MarketList,
+    build_market_insights,
+    fetch_authoritative_news,
+    fetch_upbit_candles,
+    fetch_upbit_markets,
+)
 from backend.schemas import PortfolioOptimizationRequest
 from backend.trading import Candle, generate_synthetic_prices
 import backend.app as app_module
@@ -30,6 +38,17 @@ def test_build_market_insights_from_synthetic():
     assert "rsi" in insights
     assert insights["market"] == "KRW-BTC"
     assert insights["interval"] == "minute1"
+
+
+def test_fetch_upbit_markets_fallback(monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise OSError("down")
+
+    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    listing = fetch_upbit_markets()
+    assert listing.source == "fallback"
+    assert listing.markets
+    assert all(market.market.startswith("KRW-") for market in listing.markets)
 
 
 def test_fetch_authoritative_news_fallback(monkeypatch):
@@ -89,6 +108,31 @@ def test_market_endpoints(monkeypatch):
     )
     news_response = get_news()
     assert news_response.items
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(
+            markets=[
+                MarketInfo(
+                    market="KRW-BTC",
+                    korean_name="비트코인",
+                    english_name="Bitcoin",
+                    base_currency="KRW",
+                    quote_currency="BTC",
+                    market_warning="NONE",
+                    trading_suspended=False,
+                )
+            ],
+            source="upbit",
+        ),
+    )
+
+    markets_response = app_module.list_markets()
+    assert markets_response.source == "upbit"
+    assert markets_response.markets[0].market == "KRW-BTC"
+    assert markets_response.groups
+    group_keys = {group.key for group in markets_response.groups}
+    assert "krw" in group_keys
 
 
 def test_ai_endpoints(monkeypatch):

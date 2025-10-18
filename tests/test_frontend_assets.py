@@ -1,8 +1,9 @@
 from email.message import Message
 from io import BytesIO
 from pathlib import Path
+from urllib.error import URLError
 
-import frontend.serve as serve
+from frontend import serve
 from frontend.serve import DashboardRequestHandler, UTF8RequestHandler, resolve_backend_url
 
 
@@ -33,6 +34,15 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
     assert "equity-note" in html, "Equity summary note should guide users through the chart interpretation"
     assert "window.__SADO_API_BASE__" in html, "Dashboard should expose the API base bootstrap script"
+    assert "strategy-market" in html, "Strategy form should expose a market selector"
+    assert "paper-status-market" in html, "Paper status form should expose a market input"
+    assert "chat-test-btn" in html, "Chat webhook test button must be available"
+    assert "market-options" in html, "Market datalist should be present for coin selection"
+    assert "paper-price-source" in html, "Paper summary should expose a price source indicator"
+    assert "chat-status-detail" in html, "Chat status indicator should be rendered"
+    assert "market-search" in html, "Market explorer search box must be available"
+    assert "market-results" in html, "Market explorer results grid should exist"
+    assert "market-groups" in html, "Market explorer group filter container must exist"
 
 
 def test_stylesheet_contains_korean_font_stack():
@@ -101,3 +111,28 @@ def test_dashboard_handler_proxies_api_requests(monkeypatch):
     assert captured["url"] == f"{serve.BACKEND_URL}/health"
     assert captured["method"] == "GET"
     assert handler.wfile.getvalue().endswith(b"{\"status\": \"ok\"}")
+
+
+def test_dashboard_handler_returns_json_on_backend_failure(monkeypatch):
+    def fake_urlopen(request, timeout=15):  # noqa: ARG001
+        raise URLError("down")
+
+    monkeypatch.setattr(serve, "urlopen", fake_urlopen)
+
+    handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
+    handler.path = "/api/health"
+    handler.command = "GET"
+    handler.request_version = "HTTP/1.1"
+    handler.requestline = "GET /api/health HTTP/1.1"
+    handler.client_address = ("127.0.0.1", 0)
+    handler.server = None
+    handler.headers = Message()
+    handler.rfile = BytesIO()
+    handler.wfile = BytesIO()
+
+    handler.do_GET()
+
+    payload = handler.wfile.getvalue()
+    assert payload.startswith(b"HTTP/1.0 502"), payload
+    _, body = payload.split(b"\r\n\r\n", 1)
+    assert body.startswith(b"{\"detail\"")

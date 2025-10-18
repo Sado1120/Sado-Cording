@@ -24,6 +24,12 @@ const ratioFormatter = new Intl.NumberFormat("ko-KR", {
 });
 const currencyFormatter = new Intl.NumberFormat("ko-KR");
 
+const marketOptionsEl = document.getElementById("market-options");
+const marketSearchInput = document.getElementById("market-search");
+const marketResultsEl = document.getElementById("market-results");
+const marketBaseButtons = document.querySelectorAll("[data-market-base]");
+const marketGroupsEl = document.getElementById("market-groups");
+
 const totalReturnEl = document.getElementById("metric-total-return");
 const annualReturnEl = document.getElementById("metric-annual-return");
 const drawdownEl = document.getElementById("metric-drawdown");
@@ -41,6 +47,56 @@ const equityNoteEl = document.getElementById("equity-note");
 const rebalanceOutputEl = document.getElementById("rebalance-output");
 const blueprintOutputEl = document.getElementById("blueprint-output");
 const yearEl = document.getElementById("year");
+
+const FALLBACK_MARKETS = [
+  {
+    market: "KRW-BTC",
+    korean_name: "비트코인",
+    english_name: "Bitcoin",
+    base_currency: "KRW",
+    quote_currency: "BTC",
+    market_warning: "NONE",
+    trading_suspended: false,
+  },
+  {
+    market: "KRW-ETH",
+    korean_name: "이더리움",
+    english_name: "Ethereum",
+    base_currency: "KRW",
+    quote_currency: "ETH",
+    market_warning: "NONE",
+    trading_suspended: false,
+  },
+  {
+    market: "KRW-SOL",
+    korean_name: "솔라나",
+    english_name: "Solana",
+    base_currency: "KRW",
+    quote_currency: "SOL",
+    market_warning: "NONE",
+    trading_suspended: false,
+  },
+  {
+    market: "KRW-XRP",
+    korean_name: "리플",
+    english_name: "Ripple",
+    base_currency: "KRW",
+    quote_currency: "XRP",
+    market_warning: "NONE",
+    trading_suspended: false,
+  },
+];
+
+const PAPER_SOURCE_LABELS = {
+  upbit: "업비트 실시간 시세 연동",
+  synthetic: "업비트 연결 실패 - 시뮬레이션 시세 사용",
+  manual: "수동 시세 입력 (테스트/주문 반영)",
+};
+
+let cachedMarkets = [...FALLBACK_MARKETS];
+let cachedMarketGroups = [];
+let selectedBaseCurrency = "KRW";
+let selectedMarketGroup = null;
 
 const volatilityEl = document.getElementById("metric-volatility");
 const sharpeEl = document.getElementById("metric-sharpe");
@@ -77,6 +133,16 @@ const apiStatusEl = document.getElementById("api-status");
 const apiRefreshBtn = document.getElementById("api-refresh");
 const riskSlider = document.getElementById("blueprint-risk");
 const riskLabel = document.getElementById("blueprint-risk-label");
+const chatTestBtn = document.getElementById("chat-test-btn");
+const chatTestMessageInput = document.getElementById("chat-test-message");
+const chatTestStatusEl = document.getElementById("chat-test-status");
+const chatStatusDetailEl = document.getElementById("chat-status-detail");
+const paperStatusMarketInput = document.getElementById("paper-status-market");
+const paperStatusIntervalSelect = document.getElementById("paper-status-interval");
+const paperStatusApplyBtn = document.getElementById("paper-status-apply");
+const strategyMarketInput = document.getElementById("strategy-market");
+const strategyIntervalSelect = document.getElementById("strategy-interval");
+const strategyLiveDataInput = document.getElementById("strategy-live-data");
 
 const orderForm = document.getElementById("order-form");
 const orderResultEl = document.getElementById("order-result");
@@ -88,6 +154,7 @@ const paperMarkForm = document.getElementById("paper-mark-form");
 const paperMarkMarketInput = document.getElementById("paper-mark-market");
 const paperMarkPriceInput = document.getElementById("paper-mark-price");
 const paperHeartbeatEl = document.getElementById("paper-heartbeat");
+const paperPriceSourceEl = document.getElementById("paper-price-source");
 const liveBalanceBtn = document.getElementById("live-balance-btn");
 const liveBalanceOutput = document.getElementById("live-balance-output");
 const alphaBriefingEl = document.getElementById("alpha-briefing");
@@ -194,6 +261,213 @@ let liveChartInstance;
 const paperSyncState = new Map();
 const PAPER_STATUS_INTERVAL = 30_000;
 const AUTOPILOT_STATUS_INTERVAL = 45_000;
+let lastSimulationContext = {
+  market: null,
+  interval: null,
+  useLiveData: false,
+};
+
+const describeInterval = (value) => {
+  const mapping = {
+    minute1: "1분",
+    minute3: "3분",
+    minute5: "5분",
+    minute15: "15분",
+    minute30: "30분",
+    minute60: "60분",
+    minute240: "4시간",
+    day: "일간",
+    week: "주간",
+    month: "월간",
+  };
+  return mapping[value] || value;
+};
+
+const ensureUppercase = (input) => {
+  if (!input) return;
+  const value = input.value || "";
+  input.value = value.toUpperCase();
+};
+
+const renderMarketOptions = (markets = FALLBACK_MARKETS) => {
+  if (!marketOptionsEl) return;
+  const source = markets && markets.length ? markets : FALLBACK_MARKETS;
+  marketOptionsEl.innerHTML = source
+    .map((item) => {
+      const marketCode = (item.market || "").toUpperCase();
+      const label = item.korean_name || item.english_name || marketCode;
+      return `<option value="${marketCode}">${marketCode} · ${label}</option>`;
+    })
+    .join("");
+};
+
+const MARKET_RESULTS_LIMIT = 24;
+
+const describeMarketStatus = (market) => {
+  if (market.trading_suspended) {
+    return { text: "거래 중지", tone: "warning" };
+  }
+  if (market.market_warning && market.market_warning !== "NONE") {
+    return { text: "투자 유의", tone: "warning" };
+  }
+  if (market.base_currency !== "KRW") {
+    return { text: `${market.base_currency} 마켓`, tone: "ghost" };
+  }
+  return { text: "정상", tone: "ghost" };
+};
+
+const renderMarketGroups = (groups = []) => {
+  if (!marketGroupsEl) return;
+  if (!groups.length) {
+    marketGroupsEl.innerHTML = "";
+    return;
+  }
+
+  marketGroupsEl.innerHTML = groups
+    .map((group) => {
+      const isActive = selectedMarketGroup === group.key;
+      const activeClass = isActive ? " chip--active" : "";
+      return `
+        <button type="button" class="chip chip--ghost${activeClass}" data-market-group="${group.key}" title="${group.description}">
+          ${group.label}
+          <span class="chip-count">${group.markets.length}</span>
+        </button>
+      `;
+    })
+    .join("");
+};
+
+const applyMarketToForms = (marketCode, target) => {
+  if (!marketCode) return;
+  if (target === "strategy" && strategyMarketInput) {
+    strategyMarketInput.value = marketCode;
+    ensureUppercase(strategyMarketInput);
+    handleSimulation().catch(() => {});
+  } else if (target === "paper" && paperStatusMarketInput) {
+    paperStatusMarketInput.value = marketCode;
+    ensureUppercase(paperStatusMarketInput);
+    fetchPaperStatus().catch(() => {});
+  } else if (target === "autopilot" && autopilotMarketInput) {
+    autopilotMarketInput.value = marketCode;
+    ensureUppercase(autopilotMarketInput);
+    fetchAutopilotStatus().catch(() => {});
+  } else if (target === "live" && liveMarketInput) {
+    liveMarketInput.value = marketCode;
+    ensureUppercase(liveMarketInput);
+    refreshLiveMarket().catch(() => {});
+  } else if (target === "order" && orderMarketInput) {
+    orderMarketInput.value = marketCode;
+    ensureUppercase(orderMarketInput);
+  }
+};
+
+const marketMatchesFilters = (market, query) => {
+  if (selectedBaseCurrency !== "ALL" && market.base_currency !== selectedBaseCurrency) {
+    return false;
+  }
+  if (selectedMarketGroup) {
+    const group = cachedMarketGroups.find((item) => item.key === selectedMarketGroup);
+    if (group && !group.markets.includes(market.market)) {
+      return false;
+    }
+  }
+  if (!query) return true;
+  const lowered = query.toLowerCase();
+  return (
+    market.market.toLowerCase().includes(lowered) ||
+    (market.korean_name || "").toLowerCase().includes(lowered) ||
+    (market.english_name || "").toLowerCase().includes(lowered) ||
+    (market.quote_currency || "").toLowerCase().includes(lowered)
+  );
+};
+
+const renderMarketResults = () => {
+  if (!marketResultsEl) return;
+
+  const query = (marketSearchInput?.value || "").trim();
+  const source = cachedMarkets && cachedMarkets.length ? cachedMarkets : FALLBACK_MARKETS;
+  const filtered = source.filter((item) => marketMatchesFilters(item, query));
+  if (!filtered.length) {
+    marketResultsEl.innerHTML = `
+      <li class="market-result market-result--placeholder">
+        <strong>조건에 맞는 마켓을 찾지 못했습니다.</strong>
+        <span>검색어 또는 필터를 조정해 다시 시도해 주세요.</span>
+      </li>
+    `;
+    return;
+  }
+
+  const limited = filtered.slice(0, MARKET_RESULTS_LIMIT);
+  marketResultsEl.innerHTML = limited
+    .map((market) => {
+      const status = describeMarketStatus(market);
+      const koreanLabel = market.korean_name || market.english_name || market.market;
+      const englishLabel = market.english_name && market.english_name !== koreanLabel ? market.english_name : "";
+      const warningBadge =
+        market.market_warning && market.market_warning !== "NONE"
+          ? '<span class="badge badge--warning">투자 유의</span>'
+          : "";
+      const suspendedBadge = market.trading_suspended
+        ? '<span class="badge badge--danger">거래 중지</span>'
+        : "";
+      return `
+        <li class="market-result">
+          <div class="market-result__header">
+            <strong>${market.market}</strong>
+            <span>${koreanLabel}${englishLabel ? ` · ${englishLabel}` : ""}</span>
+          </div>
+          <div class="market-result__meta">
+            <span class="badge badge--${status.tone}">${status.text}</span>
+            ${warningBadge}${suspendedBadge}
+          </div>
+          <div class="market-result__actions">
+            <button type="button" class="chip chip--ghost" data-market-action="strategy" data-market-code="${market.market}">전략</button>
+            <button type="button" class="chip chip--ghost" data-market-action="paper" data-market-code="${market.market}">페이퍼</button>
+            <button type="button" class="chip chip--ghost" data-market-action="autopilot" data-market-code="${market.market}">오토파일럿</button>
+            <button type="button" class="chip chip--ghost" data-market-action="live" data-market-code="${market.market}">시황</button>
+            <button type="button" class="chip chip--ghost" data-market-action="order" data-market-code="${market.market}">수동 주문</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+};
+
+const fetchMarketDirectory = async () => {
+  renderMarketOptions(cachedMarkets);
+  renderMarketGroups(cachedMarketGroups);
+  renderMarketResults();
+  try {
+    const response = await requestApi("/market/list?only_krw=false");
+    if (!response?.markets?.length) {
+      return;
+    }
+    cachedMarkets = response.markets.map((item) => ({
+      market: (item.market || "").toUpperCase(),
+      korean_name: item.korean_name || item.english_name || item.market,
+      english_name: item.english_name || item.korean_name || item.market,
+      base_currency: (item.base_currency || "KRW").toUpperCase(),
+      quote_currency: (item.quote_currency || "").toUpperCase(),
+      warning: item.market_warning,
+      suspended: Boolean(item.trading_suspended),
+      market_warning: (item.market_warning || "NONE").toUpperCase(),
+      trading_suspended: Boolean(item.trading_suspended),
+    }));
+    cachedMarketGroups = Array.isArray(response.groups)
+      ? response.groups.map((group) => ({
+          key: group.key,
+          label: group.label,
+          description: group.description,
+          markets: (group.markets || []).map((code) => code.toUpperCase()),
+        }))
+      : [];
+    renderMarketOptions(cachedMarkets);
+    renderMarketGroups(cachedMarketGroups);
+    renderMarketResults();
+  } catch (error) {
+    // Keep fallback options when live directory is unavailable.
+  }
+};
 
 const normaliseBase = (value) => {
   if (!value) {
@@ -221,10 +495,72 @@ if (apiEndpointInput && !apiEndpointInput.value) {
   apiEndpointInput.value = apiBase;
 }
 
+if (paperStatusIntervalSelect && !paperStatusIntervalSelect.value) {
+  paperStatusIntervalSelect.value = "minute1";
+}
+if (strategyIntervalSelect && strategyIntervalSelect.value) {
+  lastSimulationContext.interval = strategyIntervalSelect.value;
+}
+if (strategyLiveDataInput) {
+  lastSimulationContext.useLiveData = strategyLiveDataInput.checked;
+}
+
+const orderMarketInput = orderForm?.elements?.market || null;
+const marketInputs = [
+  paperStatusMarketInput,
+  paperMarkMarketInput,
+  strategyMarketInput,
+  autopilotMarketInput,
+  liveMarketInput,
+  orderMarketInput,
+];
+
+marketInputs.forEach((input) => {
+  if (!input) return;
+  ensureUppercase(input);
+  input.addEventListener("blur", () => ensureUppercase(input));
+});
+
+if (strategyMarketInput) {
+  lastSimulationContext.market = strategyMarketInput.value;
+}
+
+renderMarketOptions();
+renderMarketGroups(cachedMarketGroups);
+renderMarketResults();
+fetchMarketDirectory().catch(() => {});
+
 const setPaperHeartbeat = (state, message) => {
   if (!paperHeartbeatEl) return;
   paperHeartbeatEl.dataset.status = state;
   paperHeartbeatEl.textContent = message;
+};
+
+const updatePaperSourceLabel = (balance) => {
+  if (!paperPriceSourceEl) return;
+  if (!balance || !balance.price_source) {
+    paperPriceSourceEl.textContent = "데이터 출처 확인 중";
+    paperPriceSourceEl.classList.remove("status-note--highlight", "status-note--warning");
+    paperPriceSourceEl.classList.add("muted");
+    return;
+  }
+
+  const label = PAPER_SOURCE_LABELS[balance.price_source] || PAPER_SOURCE_LABELS.manual;
+  paperPriceSourceEl.textContent = label;
+  paperPriceSourceEl.classList.remove("muted", "status-note--highlight", "status-note--warning");
+  if (balance.price_source === "upbit") {
+    paperPriceSourceEl.classList.add("status-note--highlight");
+  } else if (balance.price_source === "synthetic") {
+    paperPriceSourceEl.classList.add("status-note--warning");
+  } else {
+    paperPriceSourceEl.classList.add("muted");
+  }
+};
+
+const updateChatTestStatus = (state, message) => {
+  if (!chatTestStatusEl) return;
+  chatTestStatusEl.dataset.status = state;
+  chatTestStatusEl.textContent = message;
 };
 
 const formatDateTime = (date) =>
@@ -306,34 +642,63 @@ const updateEquityNote = (values) => {
   const direction = change >= 0 ? "상승" : "하락";
   const arrow = change >= 0 ? "▲" : "▼";
   const summary = `${direction} ${formatPercent(Math.abs(changePct))} · 최고 ${formatCurrency(high)} KRW · 최저 ${formatCurrency(low)} KRW · ${values.length}봉 누적`;
+  const contextBits = [];
+  if (lastSimulationContext.market) {
+    contextBits.push(`마켓 ${lastSimulationContext.market}`);
+  }
+  if (lastSimulationContext.interval) {
+    contextBits.push(`${describeInterval(lastSimulationContext.interval)} 캔들`);
+  }
+  const sourceLabel = lastSimulationContext.useLiveData ? "Upbit 실시간 데이터" : "시뮬레이션 데이터";
+  contextBits.push(sourceLabel);
+  const contextSummary = contextBits.join(" · ");
 
   equityNoteEl.innerHTML = `
     <strong>${formatCurrency(start)} KRW → ${formatCurrency(end)} KRW ${arrow}</strong>
     <span>${summary}</span>
+    <small>${contextSummary}</small>
   `;
 };
 
 const updatePaperHeartbeat = (balance) => {
   if (!paperHeartbeatEl) return;
-  if (!balance?.last_updated) {
+  updatePaperSourceLabel(balance);
+
+  if (!balance) {
     setPaperHeartbeat("offline", "상태 미확인");
     return;
   }
 
-  const updated = new Date(balance.last_updated);
-  if (Number.isNaN(updated.getTime())) {
-    setPaperHeartbeat("warning", "타임스탬프 오류");
-    return;
+  const updated = balance.last_updated ? new Date(balance.last_updated) : null;
+  const hasValidTimestamp = updated && !Number.isNaN(updated.getTime());
+  const relative = hasValidTimestamp ? formatRelativeTime(updated) : "시간 확인 필요";
+
+  const state = balance.heartbeat_state || "offline";
+  let message;
+  switch (balance.heartbeat_reason) {
+    case "live":
+      message = `실시간 연동 (${relative})`;
+      break;
+    case "delayed":
+      message = `연동 지연 (${relative})`;
+      break;
+    case "synthetic":
+      message = `시뮬레이션 시세 (${relative})`;
+      break;
+    case "manual":
+      message = `수동 동기화 (${relative})`;
+      break;
+    case "stale":
+    default:
+      message = `상태 확인 필요 (${relative})`;
+      break;
   }
 
-  const diff = Date.now() - updated.getTime();
-  if (diff <= 90_000) {
-    setPaperHeartbeat("online", `실시간 연동 (${formatRelativeTime(updated)})`);
-  } else if (diff <= 300_000) {
-    setPaperHeartbeat("warning", `지연 (${formatRelativeTime(updated)})`);
-  } else {
-    setPaperHeartbeat("offline", `연결 끊김 (${formatRelativeTime(updated)})`);
+  if (!hasValidTimestamp) {
+    message = "업데이트 시간 확인 필요";
   }
+
+  setPaperHeartbeat(state, message);
 };
 
 const updateApiStatus = (state, message) => {
@@ -1042,11 +1407,42 @@ const requestApi = async (path, options = {}) => {
   }
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
-  const payload = isJson ? await response.json() : await response.text();
+  let payload;
+  let parseFailed = false;
+  if (isJson) {
+    try {
+      payload = await response.json();
+    } catch (error) {
+      parseFailed = true;
+      payload = await response.text();
+    }
+  } else {
+    payload = await response.text();
+  }
 
   if (!response.ok) {
     const detail = typeof payload === "object" && payload !== null ? payload.detail : null;
     throw new Error(detail || response.statusText || "요청에 실패했습니다.");
+  }
+
+  if (parseFailed) {
+    throw new Error("API 응답을 해석하지 못했습니다.");
+  }
+
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+      throw new Error(
+        "HTML 응답을 수신했습니다. 대시보드의 API 엔드포인트가 FastAPI 백엔드로 연결되는지 확인해주세요."
+      );
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      throw new Error(
+        "예상과 다른 텍스트 응답을 받았습니다. API 연결 또는 역방향 프록시 구성을 점검해주세요."
+      );
+    }
   }
 
   return payload;
@@ -1061,6 +1457,9 @@ const renderPaperSummary = (balance) => {
   const hasValidTimestamp = updatedAt && !Number.isNaN(updatedAt.getTime());
   const lastUpdatedText = hasValidTimestamp ? formatDateTime(updatedAt) : "확인 필요";
   const lastUpdatedRelative = hasValidTimestamp ? formatRelativeTime(updatedAt) : "";
+  const sourceDescription = PAPER_SOURCE_LABELS[balance.price_source] || PAPER_SOURCE_LABELS.manual;
+  const marketLabel = balance.market || "KRW-BTC";
+  const intervalLabel = describeInterval(balance.interval || "minute1");
 
   const headline = `
     <div class="paper-balance__headline">
@@ -1076,6 +1475,11 @@ const renderPaperSummary = (balance) => {
         <span>마지막 업데이트</span>
         <strong>${lastUpdatedText}</strong>
         ${lastUpdatedRelative ? `<small>${lastUpdatedRelative}</small>` : ""}
+      </div>
+      <div>
+        <span>모니터링</span>
+        <strong>${marketLabel}</strong>
+        <small>${intervalLabel}</small>
       </div>
     </div>
   `;
@@ -1146,24 +1550,41 @@ const renderPaperSummary = (balance) => {
       </table>`
     : '<p class="muted">아직 체결된 주문이 없습니다.</p>';
 
-  return `${headline}<div class="paper-balance__section"><h4>보유 자산</h4>${positions}</div><div class="paper-balance__section"><h4>최근 주문</h4>${orders}</div>`;
+  const sourceNote = `<div class="paper-balance__source-note">데이터 출처 · ${sourceDescription}</div>`;
+
+  return `${headline}${sourceNote}<div class="paper-balance__section"><h4>보유 자산</h4>${positions}</div><div class="paper-balance__section"><h4>최근 주문</h4>${orders}</div>`;
 };
 
 const updatePaperSummary = (balance) => {
   if (!paperSummaryEl) return;
   paperSummaryEl.innerHTML = renderPaperSummary(balance);
   updatePaperHeartbeat(balance);
+  if (paperStatusMarketInput && balance?.market) {
+    paperStatusMarketInput.value = balance.market;
+  }
+  if (paperStatusIntervalSelect && balance?.interval) {
+    paperStatusIntervalSelect.value = balance.interval;
+  }
 };
 
 const fetchPaperStatus = async () => {
   if (!paperSummaryEl) return;
   setPaperHeartbeat("loading", "새로 고치는 중...");
+  updatePaperSourceLabel(null);
   try {
-    const balance = await requestApi("/trading/paper/status");
+    const market = (paperStatusMarketInput?.value || "KRW-BTC").trim().toUpperCase();
+    const interval = paperStatusIntervalSelect?.value || "minute1";
+    const params = new URLSearchParams({ market, interval });
+    const balance = await requestApi(`/trading/paper/status?${params.toString()}`);
     updatePaperSummary(balance);
   } catch (error) {
     paperSummaryEl.innerHTML = `<p class="error">${error.message}</p>`;
     setPaperHeartbeat("offline", "연결 실패");
+    if (paperPriceSourceEl) {
+      paperPriceSourceEl.textContent = "연결 실패 - 상태 확인 필요";
+      paperPriceSourceEl.classList.remove("muted", "status-note--highlight", "status-note--warning");
+      paperPriceSourceEl.classList.add("status-note--warning");
+    }
   }
 };
 
@@ -1179,6 +1600,54 @@ const refreshApiStatus = async () => {
     }
   } catch (error) {
     updateApiStatus("offline", "오프라인");
+  }
+};
+
+const refreshChatStatus = async () => {
+  if (!chatStatusDetailEl) return;
+  try {
+    const status = await requestApi("/notifications/chat/status");
+    if (!status.configured) {
+      chatStatusDetailEl.textContent = "웹훅 URL이 설정되지 않았습니다.";
+      chatStatusDetailEl.classList.remove("muted");
+      return;
+    }
+
+    if (status.last_error) {
+      chatStatusDetailEl.textContent = `최근 오류: ${status.last_error}`;
+      chatStatusDetailEl.classList.remove("muted");
+      return;
+    }
+
+    if (status.last_success_at) {
+      chatStatusDetailEl.textContent = `마지막 성공: ${formatShortTime(status.last_success_at)} · "${status.last_message || "메시지"}"`;
+    } else if (status.last_attempt_at) {
+      chatStatusDetailEl.textContent = `마지막 시도: ${formatShortTime(status.last_attempt_at)}`;
+    } else {
+      chatStatusDetailEl.textContent = "웹훅이 준비되었습니다.";
+    }
+    chatStatusDetailEl.classList.add("muted");
+  } catch (error) {
+    chatStatusDetailEl.textContent = "웹훅 상태를 불러오지 못했습니다.";
+    chatStatusDetailEl.classList.remove("muted");
+  }
+};
+
+const handleChatTest = async () => {
+  if (!chatTestBtn) return;
+  const message = (chatTestMessageInput?.value || "").trim() || "Sado Trade Bot 웹훅 테스트";
+  updateChatTestStatus("loading", "전송 중...");
+  try {
+    await requestApi("/notifications/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    updateChatTestStatus("online", "전송 성공");
+  } catch (error) {
+    updateChatTestStatus("warning", error.message);
+  } finally {
+    await refreshChatStatus().catch(() => {});
   }
 };
 
@@ -1215,17 +1684,22 @@ const updateAutopilotRiskLabel = (value) => {
   autopilotRiskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
 };
 
-const updateAlphaBriefing = (report) => {
+const updateAlphaBriefing = (report, context = {}) => {
   if (!alphaBriefingEl) return;
 
   const payoff = formatRatio(report.trade_summary.payoff_ratio || report.win_loss_ratio);
-  const lines = [
-    `• 켈리 권장 비중: ${formatPercent(report.kelly_fraction_pct)}`,
-    `• 평균 낙폭: ${formatPercent(report.average_drawdown_pct)} | 페인 인덱스: ${formatPercent(report.pain_index)}`,
-    `• 왜도/첨도: ${ratioFormatter.format(report.skewness)} / ${ratioFormatter.format(report.kurtosis)}`,
-    `• 최대 반등폭: ${formatPercent(report.max_runup_pct)} | 시장 노출: ${formatPercent(report.exposure_time_pct)}`,
-    `• 페이오프 비율: ${payoff}`,
-  ];
+  const lines = [];
+  if (context.market) {
+    lines.push(`• 분석 마켓: ${context.market}${context.interval ? ` (${describeInterval(context.interval)})` : ''}`);
+  }
+  if (context.useLiveData !== undefined) {
+    lines.push(`• 데이터 출처: ${context.useLiveData ? 'Upbit 실시간' : '시뮬레이션'}`);
+  }
+  lines.push(`• 켈리 권장 비중: ${formatPercent(report.kelly_fraction_pct)}`);
+  lines.push(`• 평균 낙폭: ${formatPercent(report.average_drawdown_pct)} | 페인 인덱스: ${formatPercent(report.pain_index)}`);
+  lines.push(`• 왜도/첨도: ${ratioFormatter.format(report.skewness)} / ${ratioFormatter.format(report.kurtosis)}`);
+  lines.push(`• 최대 반등폭: ${formatPercent(report.max_runup_pct)} | 시장 노출: ${formatPercent(report.exposure_time_pct)}`);
+  lines.push(`• 페이오프 비율: ${payoff}`);
 
   alphaBriefingEl.textContent = lines.join("\n");
 };
@@ -1287,7 +1761,7 @@ function updateMetrics(report) {
   mcP95El.textContent = formatPercent(report.monte_carlo_summary.p95_return_pct);
   mcAvgEl.textContent = formatPercent(report.monte_carlo_summary.average_return_pct);
 
-  updateAlphaBriefing(report);
+  updateAlphaBriefing(report, lastSimulationContext);
 }
 
 function renderTrades(trades) {
@@ -1419,6 +1893,22 @@ async function handleSimulation(event) {
   const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
 
+  const marketValue = (payload.market || "").trim().toUpperCase();
+  if (marketValue) {
+    payload.market = marketValue;
+  } else {
+    delete payload.market;
+  }
+
+  const intervalValue = (payload.interval || "").trim();
+  if (intervalValue) {
+    payload.interval = intervalValue;
+  } else {
+    delete payload.interval;
+  }
+
+  payload.use_live_data = formData.has("use_live_data");
+
   ["fast_period", "slow_period"].forEach((key) => {
     payload[key] = Number.parseInt(payload[key], 10);
   });
@@ -1437,6 +1927,12 @@ async function handleSimulation(event) {
     }
     payload[key] = Number(payload[key]);
   });
+
+  lastSimulationContext = {
+    market: payload.market || null,
+    interval: payload.interval || null,
+    useLiveData: payload.use_live_data,
+  };
 
   try {
     const report = await simulateStrategy(payload);
@@ -1766,6 +2262,36 @@ const handleLiveBalance = async () => {
   }
 };
 
+marketSearchInput?.addEventListener("input", () => {
+  renderMarketResults();
+});
+
+marketBaseButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    marketBaseButtons.forEach((chip) => chip.classList.remove("chip--active"));
+    button.classList.add("chip--active");
+    selectedBaseCurrency = (button.dataset.marketBase || "ALL").toUpperCase();
+    renderMarketResults();
+  });
+});
+
+marketGroupsEl?.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-market-group]");
+  if (!trigger) return;
+  const key = trigger.dataset.marketGroup;
+  selectedMarketGroup = selectedMarketGroup === key ? null : key;
+  renderMarketGroups(cachedMarketGroups);
+  renderMarketResults();
+});
+
+marketResultsEl?.addEventListener("click", (event) => {
+  const trigger = event.target.closest("[data-market-action]");
+  if (!trigger) return;
+  const marketCode = (trigger.dataset.marketCode || "").toUpperCase();
+  const action = trigger.dataset.marketAction;
+  applyMarketToForms(marketCode, action);
+});
+
 if (apiEndpointInput) {
   apiEndpointInput.value = getApiBase();
   apiEndpointInput.addEventListener("change", (event) => {
@@ -1825,6 +2351,19 @@ liveBalanceBtn?.addEventListener("click", handleLiveBalance);
 liveRefreshBtn?.addEventListener("click", () => {
   refreshLiveMarket();
 });
+paperStatusMarketInput?.addEventListener("blur", () => {
+  paperStatusMarketInput.value = paperStatusMarketInput.value.toUpperCase();
+  fetchPaperStatus();
+});
+paperStatusIntervalSelect?.addEventListener("change", fetchPaperStatus);
+paperStatusApplyBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  fetchPaperStatus();
+});
+chatTestBtn?.addEventListener("click", (event) => {
+  event.preventDefault();
+  handleChatTest();
+});
 aiRefreshBtn?.addEventListener("click", () => {
   refreshMarketIntelligence().catch(() => {});
 });
@@ -1842,6 +2381,7 @@ liveMarketInput?.addEventListener("keydown", (event) => {
 });
 
 refreshApiStatus();
+refreshChatStatus().catch(() => {});
 fetchPaperStatus();
 fetchAutopilotStatus().catch(() => {});
 handleSimulation().catch(() => {});
@@ -1866,6 +2406,9 @@ setInterval(() => {
 setInterval(() => {
   fetchAutopilotStatus().catch(() => {});
 }, AUTOPILOT_STATUS_INTERVAL);
+setInterval(() => {
+  refreshChatStatus().catch(() => {});
+}, 300_000);
 setInterval(() => {
   refreshDiagnostics().catch(() => {});
 }, 300_000);

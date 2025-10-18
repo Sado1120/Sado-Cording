@@ -32,6 +32,23 @@ class MarketData:
     source: Literal["upbit", "synthetic"]
 
 
+@dataclass
+class MarketInfo:
+    market: str
+    korean_name: str
+    english_name: str
+    base_currency: str
+    quote_currency: str
+    market_warning: str
+    trading_suspended: bool
+
+
+@dataclass
+class MarketList:
+    markets: List[MarketInfo]
+    source: Literal["upbit", "fallback"]
+
+
 class MarketDataError(RuntimeError):
     """Raised when market data cannot be retrieved."""
 
@@ -50,6 +67,46 @@ _INTERVAL_PATHS: Dict[Interval, Tuple[str, Optional[str]]] = {
 }
 
 _UPBIT_API_BASE = "https://api.upbit.com"
+
+
+_FALLBACK_MARKETS: List[MarketInfo] = [
+    MarketInfo(
+        market="KRW-BTC",
+        korean_name="비트코인",
+        english_name="Bitcoin",
+        base_currency="KRW",
+        quote_currency="BTC",
+        market_warning="NONE",
+        trading_suspended=False,
+    ),
+    MarketInfo(
+        market="KRW-ETH",
+        korean_name="이더리움",
+        english_name="Ethereum",
+        base_currency="KRW",
+        quote_currency="ETH",
+        market_warning="NONE",
+        trading_suspended=False,
+    ),
+    MarketInfo(
+        market="KRW-SOL",
+        korean_name="솔라나",
+        english_name="Solana",
+        base_currency="KRW",
+        quote_currency="SOL",
+        market_warning="NONE",
+        trading_suspended=False,
+    ),
+    MarketInfo(
+        market="KRW-XRP",
+        korean_name="리플",
+        english_name="Ripple",
+        base_currency="KRW",
+        quote_currency="XRP",
+        market_warning="NONE",
+        trading_suspended=False,
+    ),
+]
 
 
 def _parse_upbit_timestamp(value: str) -> datetime:
@@ -125,6 +182,59 @@ def fetch_upbit_candles(
 
     candles.reverse()  # Upbit returns newest first
     return MarketData(candles=candles, source="upbit")
+
+
+def _fallback_markets(only_krw: bool) -> List[MarketInfo]:
+    if only_krw:
+        return list(_FALLBACK_MARKETS)
+    return list(_FALLBACK_MARKETS)
+
+
+def fetch_upbit_markets(*, only_krw: bool = True) -> MarketList:
+    """Return tradable markets from Upbit or a deterministic fallback list."""
+
+    url = f"{_UPBIT_API_BASE}/v1/market/all?isDetails=true"
+    request = Request(url, headers={"Accept": "application/json"})
+
+    try:
+        with urlopen(request, timeout=5) as response:
+            raw = response.read().decode("utf-8")
+            if not raw:
+                raise MarketDataError("업비트에서 빈 마켓 목록을 받았습니다.")
+            payload = json.loads(raw)
+    except (HTTPError, URLError, TimeoutError, OSError):  # pragma: no cover - network failure
+        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+    except json.JSONDecodeError:  # pragma: no cover - malformed upstream response
+        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+
+    markets: List[MarketInfo] = []
+    for item in payload:
+        market_code = str(item.get("market", "")).upper()
+        if not market_code:
+            continue
+        if only_krw and not market_code.startswith("KRW-"):
+            continue
+
+        base_currency, _, quote_currency = market_code.partition("-")
+        market_state = str(item.get("market_state", "")).upper()
+        warning = str(item.get("market_warning", "NONE")).upper() or "NONE"
+
+        markets.append(
+            MarketInfo(
+                market=market_code,
+                korean_name=str(item.get("korean_name", "")).strip() or market_code,
+                english_name=str(item.get("english_name", "")).strip() or market_code,
+                base_currency=base_currency or "KRW",
+                quote_currency=quote_currency or market_code,
+                market_warning=warning,
+                trading_suspended=market_state not in {"ACTIVE", "RUNNING"},
+            )
+        )
+
+    if not markets:
+        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+
+    return MarketList(markets=markets, source="upbit")
 
 
 def build_market_insights(

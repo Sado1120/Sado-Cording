@@ -33,6 +33,19 @@ class SimulationRequest(BaseModel):
     )
     seed: Optional[int] = Field(None, description="Seed for reproducible synthetic data")
     prices: Optional[List[CandlePayload]] = None
+    market: Optional[str] = Field(
+        None,
+        regex=r"^[A-Z]{3,5}-[A-Z0-9]{2,10}$",
+        description="Optional Upbit market code such as KRW-BTC",
+    )
+    interval: Optional[str] = Field(
+        None,
+        description="Optional Upbit candle interval (e.g. minute60, day)",
+    )
+    use_live_data: bool = Field(
+        False,
+        description="When true the simulation pulls recent Upbit candles for the selected market.",
+    )
 
     @validator("slow_period")
     def _validate_periods(cls, slow_period: int, values):
@@ -225,7 +238,11 @@ class PaperBalancePayload(BaseModel):
 
 
 class PaperStatusResponse(PaperBalancePayload):
-    pass
+    market: str = "KRW-BTC"
+    interval: str = "minute1"
+    price_source: Literal["upbit", "synthetic", "manual"] = "manual"
+    heartbeat_state: Literal["online", "warning", "offline"] = "offline"
+    heartbeat_reason: Literal["live", "delayed", "manual", "synthetic", "stale"] = "manual"
 
 
 class PaperResetRequest(BaseModel):
@@ -260,6 +277,30 @@ class MarketCandlesResponse(BaseModel):
     interval: str
     source: Literal["upbit", "synthetic"]
     candles: List[CandlePayload]
+
+
+class MarketInfoPayload(BaseModel):
+    market: str
+    korean_name: str
+    english_name: str
+    base_currency: str
+    quote_currency: str
+    market_warning: str
+    trading_suspended: bool
+
+
+class MarketGroupPayload(BaseModel):
+    key: str
+    label: str
+    description: str
+    markets: List[str]
+
+
+class MarketListResponse(BaseModel):
+    generated_at: datetime
+    source: Literal["upbit", "fallback"]
+    markets: List[MarketInfoPayload]
+    groups: List[MarketGroupPayload] = Field(default_factory=list)
 
 
 class MarketInsightsResponse(BaseModel):
@@ -513,3 +554,11 @@ class DiagnosticsResponse(BaseModel):
 
 class ChatNotificationRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
+
+
+class ChatNotificationStatus(BaseModel):
+    configured: bool
+    last_attempt_at: Optional[datetime]
+    last_success_at: Optional[datetime]
+    last_error: Optional[str]
+    last_message: Optional[str]
