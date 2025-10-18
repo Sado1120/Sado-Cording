@@ -1,6 +1,7 @@
 """FastAPI application exposing Sado Trade Bot capabilities."""
 from __future__ import annotations
 
+import math
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -11,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import ai, notifications, trading
-from .autopilot import AutoTrader, AutoTraderConfig, AutoTraderState
+from .autopilot import AutoTrader, AutoTraderConfig, AutoTraderExecution, AutoTraderState
 from .schemas import (
     CandlePayload,
     MarketAIResponse,
@@ -99,6 +100,107 @@ _paper_market_preference = "KRW-BTC"
 _paper_interval_preference = "minute1"
 
 
+def _safe_number(
+    value: Optional[float],
+    *,
+    default: float = 0.0,
+    lower: float | None = None,
+    upper: float | None = None,
+) -> float:
+    try:
+        numeric = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        numeric = default
+    if not math.isfinite(numeric):
+        numeric = default
+    if lower is not None:
+        numeric = max(lower, numeric)
+    if upper is not None:
+        numeric = min(upper, numeric)
+    return numeric
+
+
+def _sanitize_metrics_payload(metrics: ai.MarketAIMetrics) -> MarketAIMetricsPayload:
+    return MarketAIMetricsPayload(
+        fast_ema=_safe_number(metrics.fast_ema),
+        slow_ema=_safe_number(metrics.slow_ema),
+        rsi=_safe_number(metrics.rsi, lower=0.0, upper=100.0),
+        macd=_safe_number(metrics.macd),
+        macd_signal=_safe_number(metrics.macd_signal),
+        macd_histogram=_safe_number(metrics.macd_histogram),
+        volatility_pct=_safe_number(metrics.volatility_pct, lower=0.0),
+        trend_strength=_safe_number(metrics.trend_strength),
+        regime_score=_safe_number(metrics.regime_score),
+        probability_of_trend=_safe_number(metrics.probability_of_trend, lower=0.0, upper=1.0),
+        price_change_pct=_safe_number(metrics.price_change_pct),
+        support_level=_safe_number(metrics.support_level, lower=0.0),
+        resistance_level=_safe_number(metrics.resistance_level, lower=0.0),
+        atr=_safe_number(metrics.atr, lower=0.0),
+        hurst_exponent=_safe_number(metrics.hurst_exponent, lower=0.0, upper=1.0),
+        bollinger_bandwidth_pct=_safe_number(metrics.bollinger_bandwidth_pct, lower=0.0),
+        institutional_sentiment=_safe_number(metrics.institutional_sentiment, lower=0.0, upper=1.0),
+        liquidity_score=_safe_number(metrics.liquidity_score, lower=0.0),
+        breakout_probability=_safe_number(metrics.breakout_probability, lower=0.0, upper=1.0),
+        volatility_regime=metrics.volatility_regime or "중립",
+    )
+
+
+def _sanitize_risk_payload(risk: ai.RiskControlAdvice) -> RiskControlAdvicePayload:
+    return RiskControlAdvicePayload(
+        stop_loss_pct=_safe_number(risk.stop_loss_pct, lower=0.0),
+        take_profit_pct=_safe_number(risk.take_profit_pct, lower=0.0),
+        trailing_stop_pct=
+        None if risk.trailing_stop_pct is None else _safe_number(risk.trailing_stop_pct, lower=0.0),
+        position_size_pct=_safe_number(risk.position_size_pct, lower=0.0),
+        confidence_note=risk.confidence_note,
+        notes=list(risk.notes),
+    )
+
+
+def _sanitize_autopilot_plan(plan: ai.AutoPilotOrderPlan) -> AutoPilotPlanPayload:
+    return AutoPilotPlanPayload(
+        market=plan.market,
+        side=plan.side,
+        bias=plan.bias,
+        order_type=plan.order_type,
+        suggested_price=None if plan.suggested_price is None else _safe_number(plan.suggested_price),
+        position_size_pct=_safe_number(plan.position_size_pct, lower=0.0),
+        stop_loss_pct=_safe_number(plan.stop_loss_pct, lower=0.0),
+        take_profit_pct=_safe_number(plan.take_profit_pct, lower=0.0),
+        trailing_stop_pct=
+        None if plan.trailing_stop_pct is None else _safe_number(plan.trailing_stop_pct, lower=0.0),
+        confidence_pct=_safe_number(plan.confidence_pct, lower=0.0),
+        reasoning=list(plan.reasoning),
+        monitoring=list(plan.monitoring),
+    )
+
+
+def _sanitize_autopilot_execution(execution: AutoTraderExecution) -> AutoPilotExecutionPayload:
+    return AutoPilotExecutionPayload(
+        mode=execution.mode,
+        market=execution.market,
+        side=execution.side,
+        price=_safe_number(execution.price),
+        volume=_safe_number(execution.volume, lower=0.0),
+        value=_safe_number(execution.value, lower=0.0),
+        executed_at=execution.executed_at,
+        detail=execution.detail,
+    )
+
+
+def _sanitize_allocation(allocation: ai.PortfolioAllocation) -> dict:
+    return {
+        "symbol": allocation.symbol,
+        "name": allocation.name,
+        "asset_type": allocation.asset_type,
+        "weight": _safe_number(allocation.weight, lower=0.0, upper=1.0),
+        "allocation_krw": _safe_number(allocation.allocation_krw, lower=0.0),
+        "expected_return_pct": _safe_number(allocation.expected_return_pct),
+        "expected_volatility_pct": _safe_number(allocation.expected_volatility_pct, lower=0.0),
+        "rationale": allocation.rationale,
+    }
+
+
 def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse:
     config_payload = None
     if state.config:
@@ -106,43 +208,21 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
             mode=state.config.mode,
             market=state.config.market,
             interval=state.config.interval,
-            risk_appetite=state.config.risk_appetite,
-            capital=state.config.capital,
-            poll_interval=state.config.poll_interval,
+            risk_appetite=_safe_number(state.config.risk_appetite, lower=0.0, upper=1.0),
+            capital=_safe_number(state.config.capital, lower=0.0),
+            poll_interval=_safe_number(state.config.poll_interval, lower=15.0),
             include_portfolio=state.config.include_portfolio,
-            max_position_pct=state.config.max_position_pct,
-            min_confidence_pct=state.config.min_confidence_pct,
+            max_position_pct=_safe_number(state.config.max_position_pct, lower=0.0, upper=1.0),
+            min_confidence_pct=_safe_number(state.config.min_confidence_pct, lower=0.0, upper=100.0),
         )
 
     execution_payload = None
     if state.last_execution:
-        execution_payload = AutoPilotExecutionPayload(
-            mode=state.last_execution.mode,
-            market=state.last_execution.market,
-            side=state.last_execution.side,
-            price=state.last_execution.price,
-            volume=state.last_execution.volume,
-            value=state.last_execution.value,
-            executed_at=state.last_execution.executed_at,
-            detail=state.last_execution.detail,
-        )
+        execution_payload = _sanitize_autopilot_execution(state.last_execution)
 
     plan_payload = None
     if state.last_plan:
-        plan_payload = AutoPilotPlanPayload(
-            market=state.last_plan.market,
-            side=state.last_plan.side,
-            bias=state.last_plan.bias,
-            order_type=state.last_plan.order_type,
-            suggested_price=state.last_plan.suggested_price,
-            position_size_pct=state.last_plan.position_size_pct,
-            stop_loss_pct=state.last_plan.stop_loss_pct,
-            take_profit_pct=state.last_plan.take_profit_pct,
-            trailing_stop_pct=state.last_plan.trailing_stop_pct,
-            confidence_pct=state.last_plan.confidence_pct,
-            reasoning=state.last_plan.reasoning,
-            monitoring=state.last_plan.monitoring,
-        )
+        plan_payload = _sanitize_autopilot_plan(state.last_plan)
 
     logs = [
         AutoPilotLogEntryPayload(
@@ -428,14 +508,22 @@ def _score_market_recommendation(insight: ai.MarketAIInsight) -> float:
     elif "대기" in action_raw:
         action_bias = -4.0
 
-    trend_score = max(0.0, metrics.trend_strength * 100) * 0.9
-    confidence_score = max(0.0, insight.confidence_pct) * 0.45
-    momentum_score = max(0.0, metrics.price_change_pct)
-    breakout_score = metrics.breakout_probability * 25
-    sentiment_score = metrics.institutional_sentiment * 25
-    liquidity_score = metrics.liquidity_score * 20
+    trend_strength = _safe_number(metrics.trend_strength)
+    confidence_pct = _safe_number(insight.confidence_pct, lower=0.0, upper=100.0)
+    price_change_pct = _safe_number(metrics.price_change_pct)
+    breakout_probability = _safe_number(metrics.breakout_probability, lower=0.0, upper=1.0)
+    sentiment = _safe_number(metrics.institutional_sentiment, lower=0.0, upper=1.0)
+    liquidity = _safe_number(metrics.liquidity_score, lower=0.0)
+    volatility_pct = _safe_number(metrics.volatility_pct, lower=0.0)
+
+    trend_score = max(0.0, trend_strength * 100) * 0.9
+    confidence_score = max(0.0, confidence_pct) * 0.45
+    momentum_score = max(0.0, price_change_pct)
+    breakout_score = breakout_probability * 25
+    sentiment_score = sentiment * 25
+    liquidity_score = liquidity * 20
     regime_bonus = 6.0 if any(keyword in insight.regime for keyword in ("강세", "반등")) else 0.0
-    risk_guard = max(0.45, 1.2 - min(metrics.volatility_pct, 180) / 180)
+    risk_guard = max(0.45, 1.2 - min(volatility_pct, 180) / 180)
 
     raw_score = (
         trend_score
@@ -447,15 +535,23 @@ def _score_market_recommendation(insight: ai.MarketAIInsight) -> float:
         + regime_bonus
         + action_bias
     )
-    return max(0.0, raw_score * risk_guard)
+    score = max(0.0, raw_score * risk_guard)
+    if not math.isfinite(score):
+        return 0.0
+    return score
 
 
 def _format_recommendation_reason(insight: ai.MarketAIInsight) -> str:
     metrics = insight.metrics
+    confidence = _safe_number(insight.confidence_pct, lower=0.0, upper=100.0)
+    trend_pct = _safe_number(metrics.trend_strength * 100, default=0.0)
+    volatility_pct = _safe_number(metrics.volatility_pct, lower=0.0)
+    institutional_pct = _safe_number(metrics.institutional_sentiment * 100, lower=0.0, upper=100.0)
+    breakout_pct = _safe_number(metrics.breakout_probability * 100, lower=0.0, upper=100.0)
     return (
-        f"{insight.regime} · 신뢰도 {insight.confidence_pct:.1f}% · "
-        f"추세 {metrics.trend_strength * 100:.2f}% · 변동성 {metrics.volatility_pct:.2f}% · "
-        f"기관 {metrics.institutional_sentiment * 100:.1f}% · 돌파 {metrics.breakout_probability * 100:.1f}%"
+        f"{insight.regime} · 신뢰도 {confidence:.1f}% · "
+        f"추세 {trend_pct:.2f}% · 변동성 {volatility_pct:.2f}% · "
+        f"기관 {institutional_pct:.1f}% · 돌파 {breakout_pct:.1f}%"
     )
 
 
@@ -487,7 +583,14 @@ def _evaluate_market_candidate(
     score = _score_market_recommendation(insight)
     reason = _format_recommendation_reason(insight)
     metrics = insight.metrics
-    last_price = candle_data.candles[-1].close
+    last_price = _safe_number(candle_data.candles[-1].close, lower=0.0)
+    score_value = _safe_number(score, lower=0.0)
+    confidence = _safe_number(insight.confidence_pct, lower=0.0, upper=100.0)
+    price_change_pct = _safe_number(metrics.price_change_pct)
+    trend_strength_pct = _safe_number(metrics.trend_strength * 100)
+    volatility_pct = _safe_number(metrics.volatility_pct, lower=0.0)
+    institutional_pct = _safe_number(metrics.institutional_sentiment * 100, lower=0.0, upper=100.0)
+    breakout_pct = _safe_number(metrics.breakout_probability * 100, lower=0.0, upper=100.0)
 
     payload = MarketRecommendationPayload(
         market=info.market,
@@ -495,16 +598,16 @@ def _evaluate_market_candidate(
         english_name=info.english_name,
         base_currency=info.base_currency,
         quote_currency=info.quote_currency,
-        score=round(score, 2),
-        confidence_pct=insight.confidence_pct,
+        score=round(score_value, 2),
+        confidence_pct=confidence,
         regime=insight.regime,
         recommended_action=insight.recommended_action,
         last_price=last_price,
-        price_change_pct=metrics.price_change_pct,
-        trend_strength_pct=metrics.trend_strength * 100,
-        volatility_pct=metrics.volatility_pct,
-        institutional_sentiment_pct=metrics.institutional_sentiment * 100,
-        breakout_probability_pct=metrics.breakout_probability * 100,
+        price_change_pct=price_change_pct,
+        trend_strength_pct=trend_strength_pct,
+        volatility_pct=volatility_pct,
+        institutional_sentiment_pct=institutional_pct,
+        breakout_probability_pct=breakout_pct,
         summary=insight.summary,
         reason=reason,
         source=candle_data.source,
@@ -588,7 +691,8 @@ def get_market_recommendations(
     else:
         analysis_source = "mixed"
 
-    duration_ms = round((perf_counter() - start) * 1000, 2)
+    raw_duration = (perf_counter() - start) * 1000
+    duration_ms = round(_safe_number(raw_duration, lower=0.0), 2)
 
     return MarketRecommendationsResponse(
         generated_at=datetime.utcnow(),
@@ -647,7 +751,37 @@ def get_market_insights(
         interval=interval,
     )
 
-    return MarketInsightsResponse(source=data.source, **insights)
+    latest_close = _safe_number(insights.get("latest_close"), lower=0.0)
+    ema_fast = _safe_number(insights.get("ema_fast"))
+    ema_slow = _safe_number(insights.get("ema_slow"))
+    rsi = _safe_number(insights.get("rsi"), lower=0.0, upper=100.0)
+    macd = _safe_number(insights.get("macd"))
+    macd_signal = _safe_number(insights.get("macd_signal"))
+    macd_histogram = _safe_number(insights.get("macd_histogram"))
+    volatility_pct = _safe_number(insights.get("volatility_pct"), lower=0.0)
+    trend_strength = _safe_number(insights.get("trend_strength"))
+    confidence_pct = _safe_number(insights.get("confidence_pct"), lower=0.0, upper=100.0)
+
+    return MarketInsightsResponse(
+        market=str(insights.get("market", market.upper())),
+        interval=str(insights.get("interval", interval)),
+        source=data.source,
+        latest_close=latest_close,
+        latest_timestamp=insights.get("latest_timestamp"),
+        ema_fast=ema_fast,
+        ema_slow=ema_slow,
+        ema_signal=str(insights.get("ema_signal", "중립")),
+        rsi=rsi,
+        macd=macd,
+        macd_signal=macd_signal,
+        macd_histogram=macd_histogram,
+        volatility_pct=volatility_pct,
+        trend_strength=trend_strength,
+        regime=str(insights.get("regime", "중립")),
+        recommended_action=str(insights.get("recommended_action", "")),
+        confidence_pct=confidence_pct,
+        insight_summary=str(insights.get("insight_summary", "")),
+    )
 
 
 @app.get("/ai/market/intelligence", response_model=MarketAIResponse)
@@ -676,15 +810,17 @@ def get_market_intelligence(
         interval=insight.interval,
         regime=insight.regime,
         recommended_action=insight.recommended_action,
-        confidence_pct=insight.confidence_pct,
+        confidence_pct=_safe_number(insight.confidence_pct, lower=0.0, upper=100.0),
         summary=insight.summary,
         signals=insight.signals,
-        metrics=MarketAIMetricsPayload(**insight.metrics.__dict__),
-        risk=RiskControlAdvicePayload(**insight.risk.__dict__),
+        metrics=_sanitize_metrics_payload(insight.metrics),
+        risk=_sanitize_risk_payload(insight.risk),
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
         timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
-        institutional_confidence_pct=insight.institutional_confidence_pct,
+        institutional_confidence_pct=_safe_number(
+            insight.institutional_confidence_pct, lower=0.0, upper=100.0
+        ),
         institutional_commentary=insight.institutional_commentary,
     )
 
@@ -922,7 +1058,7 @@ def optimize_portfolio(payload: PortfolioOptimizationRequest) -> PortfolioOptimi
         sharpe_estimate=plan.sharpe_estimate,
         diversification_score_pct=plan.diversification_score_pct,
         tail_risk_guard_pct=plan.tail_risk_guard_pct,
-        allocations=[allocation.__dict__ for allocation in plan.allocations],
+        allocations=[_sanitize_allocation(allocation) for allocation in plan.allocations],
         hedging_notes=plan.hedging_notes,
         methodology=plan.methodology,
         market_briefings=plan.market_briefings,
@@ -989,35 +1125,24 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
         mode=payload.mode.value,
     )
 
-    autopilot_payload = AutoPilotPlanPayload(
-        market=autopilot.market,
-        side=autopilot.side,
-        bias=autopilot.bias,
-        order_type=autopilot.order_type,
-        suggested_price=autopilot.suggested_price,
-        position_size_pct=autopilot.position_size_pct,
-        stop_loss_pct=autopilot.stop_loss_pct,
-        take_profit_pct=autopilot.take_profit_pct,
-        trailing_stop_pct=autopilot.trailing_stop_pct,
-        confidence_pct=autopilot.confidence_pct,
-        reasoning=autopilot.reasoning,
-        monitoring=autopilot.monitoring,
-    )
+    autopilot_payload = _sanitize_autopilot_plan(autopilot)
 
     insight_payload = MarketAIResponse(
         market=insight.market,
         interval=insight.interval,
         regime=insight.regime,
         recommended_action=insight.recommended_action,
-        confidence_pct=insight.confidence_pct,
+        confidence_pct=_safe_number(insight.confidence_pct, lower=0.0, upper=100.0),
         summary=insight.summary,
         signals=insight.signals,
-        metrics=MarketAIMetricsPayload(**insight.metrics.__dict__),
-        risk=RiskControlAdvicePayload(**insight.risk.__dict__),
+        metrics=_sanitize_metrics_payload(insight.metrics),
+        risk=_sanitize_risk_payload(insight.risk),
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
         timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
-        institutional_confidence_pct=insight.institutional_confidence_pct,
+        institutional_confidence_pct=_safe_number(
+            insight.institutional_confidence_pct, lower=0.0, upper=100.0
+        ),
         institutional_commentary=insight.institutional_commentary,
     )
 
