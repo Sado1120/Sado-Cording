@@ -1,6 +1,9 @@
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
 
-from frontend.serve import UTF8RequestHandler
+import frontend.serve as serve
+from frontend.serve import DashboardRequestHandler, UTF8RequestHandler, resolve_backend_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +32,7 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "copilot-form" in html, "Copilot form should be present to submit AI questions"
     assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
     assert "equity-note" in html, "Equity summary note should guide users through the chart interpretation"
+    assert "window.__SADO_API_BASE__" in html, "Dashboard should expose the API base bootstrap script"
 
 
 def test_stylesheet_contains_korean_font_stack():
@@ -44,3 +48,56 @@ def test_utf8_request_handler_sets_html_utf8_content_type():
     assert handler.guess_type("index.html") == "text/html; charset=utf-8"
     assert handler.guess_type("styles.css") == "text/css; charset=utf-8"
     assert handler.guess_type("app.js") == "application/javascript; charset=utf-8"
+
+
+def test_resolve_backend_url_maps_api_prefix():
+    assert resolve_backend_url("/api/health").endswith("/health")
+    assert resolve_backend_url("/api").endswith("/")
+
+
+def test_dashboard_handler_proxies_api_requests(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __init__(self):
+            self._headers = {"Content-Type": "application/json"}
+
+        def read(self):
+            return b"{\"status\": \"ok\"}"
+
+        def getcode(self):
+            return 200
+
+        def getheaders(self):
+            return list(self._headers.items())
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_urlopen(request, timeout=15):  # noqa: ARG001 - pytest hook
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        captured["data"] = request.data
+        return FakeResponse()
+
+    monkeypatch.setattr(serve, "urlopen", fake_urlopen)
+
+    handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
+    handler.path = "/api/health"
+    handler.command = "GET"
+    handler.request_version = "HTTP/1.1"
+    handler.requestline = "GET /api/health HTTP/1.1"
+    handler.client_address = ("127.0.0.1", 0)
+    handler.server = None
+    handler.headers = Message()
+    handler.rfile = BytesIO()
+    handler.wfile = BytesIO()
+
+    handler.do_GET()
+
+    assert captured["url"] == f"{serve.BACKEND_URL}/health"
+    assert captured["method"] == "GET"
+    assert handler.wfile.getvalue().endswith(b"{\"status\": \"ok\"}")

@@ -1,11 +1,17 @@
 const STORAGE_KEY = "sado-trade-bot-api-base";
 
 const DEFAULT_API_BASE = (() => {
+  if (window.__SADO_API_BASE__) {
+    return window.__SADO_API_BASE__;
+  }
   const { origin } = window.location;
   if (origin.includes(":8501")) {
-    return origin.replace(":8501", ":8000");
+    return `${origin}/api`;
   }
-  return "http://127.0.0.1:8000";
+  if (origin.startsWith("http://127.0.0.1") || origin.startsWith("http://localhost")) {
+    return "http://127.0.0.1:8000";
+  }
+  return `${origin}/api`;
 })();
 
 const percentFormatter = new Intl.NumberFormat("ko-KR", {
@@ -184,6 +190,10 @@ const setApiBase = (value) => {
   refreshApiStatus();
   handleSimulation();
 };
+
+if (apiEndpointInput && !apiEndpointInput.value) {
+  apiEndpointInput.value = apiBase;
+}
 
 const setPaperHeartbeat = (state, message) => {
   if (!paperHeartbeatEl) return;
