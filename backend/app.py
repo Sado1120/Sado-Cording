@@ -56,6 +56,8 @@ from .schemas import (
     ChatNotificationRequest,
     ChatNotificationStatus,
     MarketGroupPayload,
+    MarketRecommendationsResponse,
+    MarketRecommendationPayload,
 )
 from .execution import (
     ExecutionError,
@@ -67,6 +69,7 @@ from .execution import (
 )
 from .market import (
     MarketDataError,
+    MarketInfo,
     build_market_insights,
     fetch_authoritative_news,
     fetch_upbit_candles,
@@ -409,6 +412,164 @@ def list_markets(only_krw: bool = True) -> MarketListResponse:
         source=listing.source,
         markets=markets,
         groups=_build_market_groups(markets),
+    )
+
+
+def _score_market_recommendation(insight: ai.MarketAIInsight) -> float:
+    metrics = insight.metrics
+    action_raw = insight.recommended_action or ""
+    action = action_raw.lower()
+    action_bias = 0.0
+    if "매수" in action_raw or "buy" in action:
+        action_bias = 8.0
+    elif "매도" in action_raw or "sell" in action:
+        action_bias = -10.0
+    elif "대기" in action_raw:
+        action_bias = -4.0
+
+    trend_score = max(0.0, metrics.trend_strength * 100) * 0.9
+    confidence_score = max(0.0, insight.confidence_pct) * 0.45
+    momentum_score = max(0.0, metrics.price_change_pct)
+    breakout_score = metrics.breakout_probability * 25
+    sentiment_score = metrics.institutional_sentiment * 25
+    liquidity_score = metrics.liquidity_score * 20
+    regime_bonus = 6.0 if any(keyword in insight.regime for keyword in ("강세", "반등")) else 0.0
+    risk_guard = max(0.45, 1.2 - min(metrics.volatility_pct, 180) / 180)
+
+    raw_score = (
+        trend_score
+        + confidence_score
+        + momentum_score
+        + breakout_score
+        + sentiment_score
+        + liquidity_score
+        + regime_bonus
+        + action_bias
+    )
+    return max(0.0, raw_score * risk_guard)
+
+
+def _format_recommendation_reason(insight: ai.MarketAIInsight) -> str:
+    metrics = insight.metrics
+    return (
+        f"{insight.regime} · 신뢰도 {insight.confidence_pct:.1f}% · "
+        f"추세 {metrics.trend_strength * 100:.2f}% · 변동성 {metrics.volatility_pct:.2f}% · "
+        f"기관 {metrics.institutional_sentiment * 100:.1f}% · 돌파 {metrics.breakout_probability * 100:.1f}%"
+    )
+
+
+@app.get("/market/recommendations", response_model=MarketRecommendationsResponse)
+def get_market_recommendations(
+    base: str = "KRW",
+    interval: str = "minute60",
+    limit: int = 5,
+    max_markets: int = 60,
+    include_warnings: bool = False,
+) -> MarketRecommendationsResponse:
+    start = perf_counter()
+    base_currency = base.upper() or "KRW"
+    interval = interval or "minute60"
+    limit = max(1, min(limit, 10))
+    max_markets = max(limit, min(max_markets, 120))
+
+    only_krw = base_currency == "KRW"
+    listing = fetch_upbit_markets(only_krw=only_krw if base_currency != "ALL" else False)
+
+    candidates: list[MarketInfo] = []
+    for item in listing.markets:
+        if item.trading_suspended:
+            continue
+        if not include_warnings and item.market_warning not in {"", "NONE"}:
+            continue
+        if base_currency != "ALL" and item.base_currency.upper() != base_currency:
+            continue
+        candidates.append(item)
+
+    candidates.sort(key=lambda info: info.market)
+    analysed = 0
+    errors: list[str] = []
+    scores: list[MarketRecommendationPayload] = []
+    data_sources: set[str] = set()
+
+    for info in candidates[:max_markets]:
+        try:
+            candle_data = fetch_upbit_candles(market=info.market, interval=interval, count=200)
+        except MarketDataError as exc:
+            errors.append(f"{info.market}: {exc}")
+            continue
+        except Exception as exc:  # pragma: no cover - unexpected failure path
+            errors.append(f"{info.market}: {exc}")
+            continue
+
+        data_sources.add(candle_data.source)
+        if len(candle_data.candles) < 30:
+            errors.append(f"{info.market}: 캔들이 부족합니다")
+            continue
+
+        try:
+            insight = ai.analyse_market(
+                candle_data.candles,
+                market=info.market,
+                interval=interval,
+            )
+        except Exception as exc:
+            errors.append(f"{info.market}: {exc}")
+            continue
+
+        analysed += 1
+        score = _score_market_recommendation(insight)
+        reason = _format_recommendation_reason(insight)
+        metrics = insight.metrics
+        last_price = candle_data.candles[-1].close
+
+        scores.append(
+            MarketRecommendationPayload(
+                market=info.market,
+                korean_name=info.korean_name,
+                english_name=info.english_name,
+                base_currency=info.base_currency,
+                quote_currency=info.quote_currency,
+                score=round(score, 2),
+                confidence_pct=insight.confidence_pct,
+                regime=insight.regime,
+                recommended_action=insight.recommended_action,
+                last_price=last_price,
+                price_change_pct=metrics.price_change_pct,
+                trend_strength_pct=metrics.trend_strength * 100,
+                volatility_pct=metrics.volatility_pct,
+                institutional_sentiment_pct=metrics.institutional_sentiment * 100,
+                breakout_probability_pct=metrics.breakout_probability * 100,
+                summary=insight.summary,
+                reason=reason,
+                source=candle_data.source,
+            )
+        )
+
+    scores.sort(key=lambda item: item.score, reverse=True)
+    top_recommendations = scores[:limit]
+
+    if not data_sources:
+        if listing.source == "fallback":
+            analysis_source = "synthetic"
+        else:
+            analysis_source = "synthetic"
+    elif len(data_sources) == 1:
+        analysis_source = data_sources.pop()
+    else:
+        analysis_source = "mixed"
+
+    duration_ms = round((perf_counter() - start) * 1000, 2)
+
+    return MarketRecommendationsResponse(
+        generated_at=datetime.utcnow(),
+        interval=interval,
+        base_currency=base_currency,
+        limit=limit,
+        analysed_markets=analysed,
+        analysis_duration_ms=duration_ms,
+        analysis_source=analysis_source,
+        recommendations=top_recommendations,
+        errors=errors,
     )
 
 

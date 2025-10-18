@@ -9,6 +9,7 @@ from backend.app import (
 )
 from backend.market import (
     MarketData,
+    MarketDataError,
     MarketInfo,
     MarketList,
     build_market_insights,
@@ -133,6 +134,62 @@ def test_market_endpoints(monkeypatch):
     assert markets_response.groups
     group_keys = {group.key for group in markets_response.groups}
     assert "krw" in group_keys
+
+
+def test_market_recommendations_endpoint(monkeypatch):
+    markets = [
+        MarketInfo(
+            market="KRW-BTC",
+            korean_name="비트코인",
+            english_name="Bitcoin",
+            base_currency="KRW",
+            quote_currency="BTC",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ETH",
+            korean_name="이더리움",
+            english_name="Ethereum",
+            base_currency="KRW",
+            quote_currency="ETH",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ERR",
+            korean_name="에러코인",
+            english_name="ErrorCoin",
+            base_currency="KRW",
+            quote_currency="ERR",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(markets=markets, source="upbit"),
+    )
+
+    def fake_fetch(market: str, interval: str = "minute60", count: int = 200):
+        if market.endswith("ERR"):
+            raise MarketDataError("network error")
+        seed = sum(ord(char) for char in market)
+        candles = generate_synthetic_prices(days=200, seed=seed)
+        return MarketData(candles=candles, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=3)
+
+    assert response.limit == 3
+    assert response.analysed_markets == 2
+    assert response.analysis_source == "synthetic"
+    assert 1 <= len(response.recommendations) <= 3
+    assert any(item.market == "KRW-BTC" for item in response.recommendations)
+    assert any(item.market == "KRW-ETH" for item in response.recommendations)
+    assert response.errors and any("KRW-ERR" in error for error in response.errors)
 
 
 def test_ai_endpoints(monkeypatch):

@@ -23,6 +23,8 @@ const ratioFormatter = new Intl.NumberFormat("ko-KR", {
   maximumFractionDigits: 2,
 });
 const currencyFormatter = new Intl.NumberFormat("ko-KR");
+const formatPercentNumber = (value) => `${ratioFormatter.format(value)}%`;
+const formatCurrency = (value) => currencyFormatter.format(Math.round(value ?? 0));
 
 const marketOptionsEl = document.getElementById("market-options");
 const marketSearchInput = document.getElementById("market-search");
@@ -47,6 +49,14 @@ const equityNoteEl = document.getElementById("equity-note");
 const rebalanceOutputEl = document.getElementById("rebalance-output");
 const blueprintOutputEl = document.getElementById("blueprint-output");
 const yearEl = document.getElementById("year");
+
+const recommendationsPanelEl = document.getElementById("recommendations-panel");
+const recommendationsListEl = document.getElementById("recommendations-list");
+const recommendationsFilterEl = document.getElementById("recommendations-filter");
+const recommendationsUpdatedEl = document.getElementById("recommendations-updated");
+const recommendationsSourceEl = document.getElementById("recommendations-source");
+const recommendationsRefreshBtn = document.getElementById("recommendations-refresh");
+const recommendationsErrorsEl = document.getElementById("recommendations-errors");
 
 const FALLBACK_MARKETS = [
   {
@@ -97,6 +107,8 @@ let cachedMarkets = [...FALLBACK_MARKETS];
 let cachedMarketGroups = [];
 let selectedBaseCurrency = "KRW";
 let selectedMarketGroup = null;
+let recommendationsState = { base: "KRW", interval: "minute60", limit: 5 };
+let recommendationsTimer = null;
 
 const volatilityEl = document.getElementById("metric-volatility");
 const sharpeEl = document.getElementById("metric-sharpe");
@@ -433,6 +445,195 @@ const renderMarketResults = () => {
     .join("");
 };
 
+
+const describeRecommendationSource = (value) => {
+  switch ((value || "").toLowerCase()) {
+    case "upbit":
+      return "업비트 실시간";
+    case "synthetic":
+      return "시뮬레이션 시세";
+    case "mixed":
+      return "실시간+시뮬레이션";
+    default:
+      return "데이터 확인 필요";
+  }
+};
+
+const setRecommendationsLoading = (loading) => {
+  if (!recommendationsPanelEl) return;
+  recommendationsPanelEl.classList.toggle("panel--loading", Boolean(loading));
+  if (recommendationsRefreshBtn) {
+    if (loading) {
+      recommendationsRefreshBtn.setAttribute("disabled", "true");
+    } else {
+      recommendationsRefreshBtn.removeAttribute("disabled");
+    }
+  }
+};
+
+const setRecommendationsError = (message) => {
+  if (!recommendationsErrorsEl) return;
+  const hasMessage = Boolean(message);
+  recommendationsErrorsEl.textContent = message || "";
+  recommendationsErrorsEl.classList.toggle("is-visible", hasMessage);
+  if (hasMessage) {
+    recommendationsPanelEl?.classList.add("panel--error");
+  } else {
+    recommendationsPanelEl?.classList.remove("panel--error");
+  }
+};
+
+const renderRecommendationsList = (items = []) => {
+  if (!recommendationsListEl) return;
+  if (!items.length) {
+    recommendationsListEl.innerHTML = `
+      <li class="recommendation-card recommendation-card--placeholder">
+        <strong>추천 결과가 없습니다.</strong>
+        <span>필터를 변경하거나 잠시 후 다시 시도해 주세요.</span>
+      </li>
+    `;
+    return;
+  }
+
+  recommendationsListEl.innerHTML = items
+    .map((item, index) => {
+      const englishName =
+        item.english_name && item.english_name !== item.korean_name ? ` · ${item.english_name}` : "";
+      const sentiment = formatPercentNumber(item.institutional_sentiment_pct);
+      const breakout = formatPercentNumber(item.breakout_probability_pct);
+      const trend = formatPercentNumber(item.trend_strength_pct);
+      const volatility = formatPercentNumber(item.volatility_pct);
+      const confidence = formatPercent(item.confidence_pct);
+      const priceChange = formatPercentNumber(item.price_change_pct);
+      return `
+        <li class="recommendation-card">
+          <div class="recommendation-card__header">
+            <div>
+              <span class="recommendation-rank">#${index + 1}</span>
+              <strong>${item.market}</strong>
+              <span class="recommendation-name">${item.korean_name}${englishName}</span>
+            </div>
+            <div class="recommendation-score">${ratioFormatter.format(item.score)}</div>
+          </div>
+          <div class="recommendation-card__meta">
+            <span class="badge">${item.recommended_action}</span>
+            <span>신뢰도 ${confidence}</span>
+            <span>추세 ${trend}</span>
+            <span>변동성 ${volatility}</span>
+            <span>기관 ${sentiment}</span>
+            <span>돌파 ${breakout}</span>
+            <span>최근 변동 ${priceChange}</span>
+            <span>종가 ${formatCurrency(item.last_price)} KRW</span>
+          </div>
+          <p class="recommendation-card__reason">${item.reason}</p>
+          <p class="recommendation-card__summary">${item.summary}</p>
+        </li>
+      `;
+    })
+    .join("");
+};
+
+const updateRecommendationsMeta = (payload = {}) => {
+  if (!recommendationsPanelEl) return;
+  const baseCurrency = (payload.base_currency || recommendationsState.base || "KRW").toUpperCase();
+  const interval = payload.interval || recommendationsState.interval || "minute60";
+  if (recommendationsFilterEl) {
+    const baseLabel = baseCurrency === "ALL" ? "전체 마켓" : `${baseCurrency} 마켓`;
+    const intervalLabel = describeInterval(interval);
+    recommendationsFilterEl.textContent = `${baseLabel} · ${intervalLabel}`;
+  }
+  if (recommendationsUpdatedEl) {
+    if (payload.generated_at) {
+      const generatedAt = new Date(payload.generated_at);
+      if (!Number.isNaN(generatedAt.getTime())) {
+        const relative = formatRelativeTime(generatedAt);
+        recommendationsUpdatedEl.textContent = `${formatDateTime(generatedAt)} (${relative})`;
+      } else {
+        recommendationsUpdatedEl.textContent = "갱신 대기";
+      }
+    } else {
+      recommendationsUpdatedEl.textContent = "갱신 대기";
+    }
+  }
+  if (recommendationsSourceEl && payload.analysis_source) {
+    recommendationsSourceEl.textContent = describeRecommendationSource(payload.analysis_source);
+    recommendationsSourceEl.classList.toggle(
+      "badge--ghost",
+      payload.analysis_source === "synthetic"
+    );
+  }
+};
+
+const scheduleRecommendationsRefresh = (delay = 180000) => {
+  if (recommendationsTimer) {
+    clearTimeout(recommendationsTimer);
+  }
+  recommendationsTimer = window.setTimeout(() => {
+    loadRecommendations().catch(() => {
+      // swallow
+    });
+  }, delay);
+};
+
+const loadRecommendations = async (override = {}) => {
+  if (!recommendationsListEl) return null;
+
+  const nextBase = (
+    override.base ||
+    (selectedBaseCurrency ? selectedBaseCurrency : recommendationsState.base)
+  ).toUpperCase();
+  const nextInterval = override.interval || strategyIntervalSelect?.value || recommendationsState.interval;
+  const nextLimit = override.limit || recommendationsState.limit || 5;
+
+  recommendationsState = {
+    ...recommendationsState,
+    base: nextBase,
+    interval: nextInterval,
+    limit: nextLimit,
+  };
+
+  updateRecommendationsMeta({ base_currency: nextBase, interval: nextInterval });
+
+  const params = new URLSearchParams({
+    base: recommendationsState.base,
+    interval: recommendationsState.interval,
+    limit: String(recommendationsState.limit),
+  });
+  if (override.includeWarnings) {
+    params.set("include_warnings", "true");
+  }
+
+  setRecommendationsLoading(true);
+  setRecommendationsError("");
+  recommendationsListEl.classList.add("is-loading");
+
+  try {
+    const payload = await requestApi(`/market/recommendations?${params.toString()}`);
+    renderRecommendationsList(payload?.recommendations || []);
+    updateRecommendationsMeta(payload);
+    if (payload?.errors?.length) {
+      setRecommendationsError(payload.errors.slice(0, 3).join(" | "));
+    } else {
+      setRecommendationsError("");
+    }
+    scheduleRecommendationsRefresh();
+    return payload;
+  } catch (error) {
+    recommendationsListEl.innerHTML = `
+      <li class="recommendation-card recommendation-card--placeholder">
+        <strong>추천을 불러오지 못했습니다.</strong>
+        <span>${error.message}</span>
+      </li>
+    `;
+    setRecommendationsError(error.message);
+    scheduleRecommendationsRefresh(90000);
+    throw error;
+  } finally {
+    recommendationsListEl.classList.remove("is-loading");
+    setRecommendationsLoading(false);
+  }
+};
+
 const fetchMarketDirectory = async () => {
   renderMarketOptions(cachedMarkets);
   renderMarketGroups(cachedMarketGroups);
@@ -501,6 +702,10 @@ if (paperStatusIntervalSelect && !paperStatusIntervalSelect.value) {
 if (strategyIntervalSelect && strategyIntervalSelect.value) {
   lastSimulationContext.interval = strategyIntervalSelect.value;
 }
+strategyIntervalSelect?.addEventListener("change", (event) => {
+  const intervalValue = event.target.value;
+  loadRecommendations({ interval: intervalValue }).catch(() => {});
+});
 if (strategyLiveDataInput) {
   lastSimulationContext.useLiveData = strategyLiveDataInput.checked;
 }
@@ -529,6 +734,7 @@ renderMarketOptions();
 renderMarketGroups(cachedMarketGroups);
 renderMarketResults();
 fetchMarketDirectory().catch(() => {});
+loadRecommendations().catch(() => {});
 
 const setPaperHeartbeat = (state, message) => {
   if (!paperHeartbeatEl) return;
@@ -708,7 +914,6 @@ const updateApiStatus = (state, message) => {
 };
 
 const formatPercent = (value) => `${percentFormatter.format(value)}%`;
-const formatCurrency = (value) => currencyFormatter.format(Math.round(value));
 const formatRatio = (value) =>
   Number.isFinite(value) && Math.abs(value) !== Infinity
     ? ratioFormatter.format(value)
@@ -2272,6 +2477,7 @@ marketBaseButtons.forEach((button) => {
     button.classList.add("chip--active");
     selectedBaseCurrency = (button.dataset.marketBase || "ALL").toUpperCase();
     renderMarketResults();
+    loadRecommendations({ base: selectedBaseCurrency }).catch(() => {});
   });
 });
 
@@ -2303,6 +2509,13 @@ if (apiEndpointInput) {
 
 apiRefreshBtn?.addEventListener("click", () => {
   refreshApiStatus();
+});
+
+recommendationsRefreshBtn?.addEventListener("click", () => {
+  loadRecommendations({
+    base: recommendationsState.base,
+    interval: recommendationsState.interval,
+  }).catch(() => {});
 });
 
 if (riskSlider) {

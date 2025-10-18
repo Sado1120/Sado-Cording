@@ -303,6 +303,39 @@ class MarketListResponse(BaseModel):
     groups: List[MarketGroupPayload] = Field(default_factory=list)
 
 
+class MarketRecommendationPayload(BaseModel):
+    market: str
+    korean_name: str
+    english_name: str
+    base_currency: str
+    quote_currency: str
+    score: float
+    confidence_pct: float
+    regime: str
+    recommended_action: str
+    last_price: float
+    price_change_pct: float
+    trend_strength_pct: float
+    volatility_pct: float
+    institutional_sentiment_pct: float
+    breakout_probability_pct: float
+    summary: str
+    reason: str
+    source: Literal["upbit", "synthetic"]
+
+
+class MarketRecommendationsResponse(BaseModel):
+    generated_at: datetime
+    interval: str
+    base_currency: str
+    limit: int
+    analysed_markets: int
+    analysis_duration_ms: float
+    analysis_source: Literal["upbit", "synthetic", "mixed"]
+    recommendations: List[MarketRecommendationPayload]
+    errors: List[str] = Field(default_factory=list)
+
+
 class MarketInsightsResponse(BaseModel):
     market: str
     interval: str
