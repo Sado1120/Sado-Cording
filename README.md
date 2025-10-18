@@ -209,6 +209,7 @@ Synology 컨테이너 매니저에 복사할 때는 "Git 적용 복사"로 전�
 - 대시보드 상단 "Synology Chat 웹훅 테스트" 카드에서 테스트 문구를 입력하고 `테스트 전송`을 누르면 `/notifications/chat` API가 호출되며 성공/실패가 배지로 표시됩니다.
 - 같은 카드의 상태 문구는 `/notifications/chat/status` 응답을 반영하여 최근 전송 메시지, 성공 시각, 오류 원인을 보여주므로 Synology Chat 연결이 정상인지 실시간으로 확인할 수 있습니다.
 - 테스트가 실패할 경우 8501 우측 상단 API 엔드포인트 입력창에서 백엔드 주소가 올바른지 확인한 뒤 다시 시도하세요.
+- 서버 쉘에서는 `python -m backend.notifications --status` 명령으로 환경 변수 구성 여부와 최근 전송 기록을 확인하거나, `python -m backend.notifications "Synology Chat 웹훅 테스트"`로 직접 메시지를 발송하여 채널에서 수신 여부를 검증할 수 있습니다.
 
 ### AI 코파일럿 활용 가이드
 

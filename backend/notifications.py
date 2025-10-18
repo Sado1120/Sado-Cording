@@ -87,3 +87,77 @@ def get_synology_chat_status() -> dict:
         "last_message": _last_message,
     }
 
+
+def _format_timestamp(value: Optional[datetime]) -> str:
+    if value is None:
+        return "-"
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _format_status_for_cli() -> str:
+    status = get_synology_chat_status()
+    lines = [
+        "Synology Chat Webhook 상태",
+        "-------------------------",
+        f"Configured : {'예' if status['configured'] else '아니오'}",
+        f"Last Attempt: {_format_timestamp(status['last_attempt_at'])}",
+        f"Last Success: {_format_timestamp(status['last_success_at'])}",
+        f"Last Error  : {status['last_error'] or '-'}",
+        f"Last Message: {status['last_message'] or '-'}",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> None:  # pragma: no cover - lightweight CLI wrapper
+    import argparse
+    import textwrap
+
+    parser = argparse.ArgumentParser(
+        prog="python -m backend.notifications",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=textwrap.dedent(
+            """
+            Synology Chat 웹훅 상태를 확인하거나 테스트 메시지를 전송합니다.
+
+            환경 변수 SADO_CHAT_WEBHOOK 또는 --webhook-url 옵션 중 하나는 반드시
+            설정되어 있어야 하며, 설정 후에는 다음과 같이 검증할 수 있습니다.
+
+              python -m backend.notifications --status
+              python -m backend.notifications "Sado Trade Bot 연결 테스트"
+            """
+        ),
+    )
+    parser.add_argument(
+        "message",
+        nargs="?",
+        default="Sado Trade Bot Synology Chat 테스트",
+        help="전송할 메시지 (기본값: 테스트 메시지)",
+    )
+    parser.add_argument(
+        "--webhook-url",
+        dest="webhook_url",
+        help="직접 지정할 Synology Chat 웹훅 URL",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="웹훅 구성 및 최근 전송 이력을 출력만 합니다.",
+    )
+
+    args = parser.parse_args()
+
+    if args.status:
+        print(_format_status_for_cli())
+        return
+
+    success = notify_synology_chat(args.message, webhook_url=args.webhook_url)
+    print(_format_status_for_cli())
+    if success:
+        print("\n✅ Synology Chat으로 메시지를 전송했습니다.")
+    else:
+        print("\n⚠️  메시지 전송에 실패했습니다. URL과 토큰을 다시 확인하세요.")
+
+
+if __name__ == "__main__":  # pragma: no cover - module CLI entry point
+    main()
+
