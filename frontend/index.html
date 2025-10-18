@@ -274,6 +274,95 @@
         </div>
       </section>
 
+      <section class="panel panel--autopilot">
+        <header>
+          <h2>AI 오토파일럿 제어</h2>
+          <span class="panel-subtitle">실시간 자동매매 상태와 실행 로그 모니터링</span>
+        </header>
+        <div class="autopilot-grid">
+          <form id="autopilot-form" class="autopilot-form">
+            <div class="autopilot-form__grid">
+              <label class="control-field">
+                <span>모드</span>
+                <select id="autopilot-mode" name="mode">
+                  <option value="paper" selected>페이퍼</option>
+                  <option value="live">실거래</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>마켓</span>
+                <input id="autopilot-market" type="text" value="KRW-BTC" required />
+              </label>
+              <label class="control-field">
+                <span>캔들 주기</span>
+                <select id="autopilot-interval">
+                  <option value="minute1">1분</option>
+                  <option value="minute5">5분</option>
+                  <option value="minute15">15분</option>
+                  <option value="minute60" selected>60분</option>
+                  <option value="day">일봉</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>리스크 성향</span>
+                <input id="autopilot-risk" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <small id="autopilot-risk-label">균형형 (60.00%)</small>
+              </label>
+              <label class="control-field">
+                <span>운용 자본 (KRW)</span>
+                <input id="autopilot-capital" type="number" value="30000000" min="1000000" step="500000" />
+              </label>
+              <label class="control-field">
+                <span>평가 주기 (초)</span>
+                <input id="autopilot-poll" type="number" value="120" min="15" max="900" step="15" />
+              </label>
+              <label class="control-field">
+                <span>최대 포지션 (자본비율)</span>
+                <input id="autopilot-max-position" type="number" value="0.25" min="0.05" max="1" step="0.05" />
+              </label>
+              <label class="control-field">
+                <span>최소 신뢰도 (%)</span>
+                <input id="autopilot-confidence" type="number" value="60" min="40" max="95" step="1" />
+              </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-include-portfolio" type="checkbox" checked />
+                <span>포트폴리오 재조정 참고</span>
+              </label>
+            </div>
+            <div class="autopilot-form__actions">
+              <button id="autopilot-start" class="btn btn--primary" type="submit">오토파일럿 시작</button>
+              <button id="autopilot-stop" class="btn btn--ghost" type="button">중지</button>
+            </div>
+            <p class="form-helper">실거래 모드는 Synology 환경변수에 업비트 API 키가 설정되어 있어야 자동 주문이 발동합니다.</p>
+          </form>
+
+          <div class="autopilot-status">
+            <div class="autopilot-status__headline">
+              <span id="autopilot-state" class="status-pill" data-status="offline">대기</span>
+              <div>
+                <span class="autopilot-label">최근 시작</span>
+                <strong id="autopilot-last-run">-</strong>
+              </div>
+              <div>
+                <span class="autopilot-label">최근 완료</span>
+                <strong id="autopilot-last-completed">-</strong>
+              </div>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>최근 자동 주문</h3>
+              <p id="autopilot-last-trade" class="autopilot-last-trade">실행 내역이 없습니다.</p>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>오토파일럿 로그</h3>
+              <ul id="autopilot-log" class="autopilot-log">
+                <li class="autopilot-log__placeholder">로그가 준비 중입니다.</li>
+              </ul>
+            </div>
+            <p id="autopilot-last-error" class="autopilot-error"></p>
+          </div>
+        </div>
+      </section>
+
       <section class="panel panel--copilot">
         <header>
           <h2>AI 코파일럿 실시간 자문</h2>

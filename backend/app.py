@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import ai, trading
+from .autopilot import AutoTrader, AutoTraderConfig, AutoTraderState
 from .schemas import (
     CandlePayload,
     MarketAIResponse,
@@ -40,6 +41,11 @@ from .schemas import (
     SimulationRequest,
     SimulationResponse,
     TradePayload,
+    AutoPilotConfigRequest,
+    AutoPilotConfigPayload,
+    AutoPilotExecutionPayload,
+    AutoPilotLogEntryPayload,
+    AutoPilotStatusResponse,
 )
 from .execution import (
     ExecutionError,
@@ -73,6 +79,87 @@ app.add_middleware(
 
 
 _paper_broker: PaperBroker = paper_broker()
+_auto_trader = AutoTrader(broker=_paper_broker)
+
+
+def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse:
+    config_payload = None
+    if state.config:
+        config_payload = AutoPilotConfigPayload(
+            mode=state.config.mode,
+            market=state.config.market,
+            interval=state.config.interval,
+            risk_appetite=state.config.risk_appetite,
+            capital=state.config.capital,
+            poll_interval=state.config.poll_interval,
+            include_portfolio=state.config.include_portfolio,
+            max_position_pct=state.config.max_position_pct,
+            min_confidence_pct=state.config.min_confidence_pct,
+        )
+
+    execution_payload = None
+    if state.last_execution:
+        execution_payload = AutoPilotExecutionPayload(
+            mode=state.last_execution.mode,
+            market=state.last_execution.market,
+            side=state.last_execution.side,
+            price=state.last_execution.price,
+            volume=state.last_execution.volume,
+            value=state.last_execution.value,
+            executed_at=state.last_execution.executed_at,
+            detail=state.last_execution.detail,
+        )
+
+    plan_payload = None
+    if state.last_plan:
+        plan_payload = AutoPilotPlanPayload(
+            market=state.last_plan.market,
+            side=state.last_plan.side,
+            bias=state.last_plan.bias,
+            order_type=state.last_plan.order_type,
+            suggested_price=state.last_plan.suggested_price,
+            position_size_pct=state.last_plan.position_size_pct,
+            stop_loss_pct=state.last_plan.stop_loss_pct,
+            take_profit_pct=state.last_plan.take_profit_pct,
+            trailing_stop_pct=state.last_plan.trailing_stop_pct,
+            confidence_pct=state.last_plan.confidence_pct,
+            reasoning=state.last_plan.reasoning,
+            monitoring=state.last_plan.monitoring,
+        )
+
+    logs = [
+        AutoPilotLogEntryPayload(
+            timestamp=entry.timestamp,
+            level=entry.level,
+            message=entry.message,
+        )
+        for entry in state.logs
+    ]
+
+    return AutoPilotStatusResponse(
+        running=state.running,
+        config=config_payload,
+        last_plan=plan_payload,
+        last_execution=execution_payload,
+        last_error=state.last_error,
+        last_cycle_started_at=state.last_cycle_started_at,
+        last_cycle_completed_at=state.last_cycle_completed_at,
+        logs=logs,
+    )
+
+
+def _build_autopilot_config(payload: AutoPilotConfigRequest) -> AutoTraderConfig:
+    return AutoTraderConfig(
+        mode=payload.mode,
+        market=payload.market.upper(),
+        interval=payload.interval,
+        risk_appetite=payload.risk_appetite,
+        capital=payload.capital,
+        poll_interval=payload.poll_interval,
+        include_portfolio=payload.include_portfolio,
+        max_position_pct=payload.max_position_pct,
+        min_confidence_pct=payload.min_confidence_pct,
+    )
 
 
 def _news_items(entries: Iterable[dict]) -> list[NewsItem]:
@@ -144,6 +231,24 @@ def _serialize_balance(snapshot) -> PaperBalancePayload:
         positions=[_serialize_position(pos) for pos in snapshot.positions],
         orders=[_serialize_order(order) for order in snapshot.orders],
     )
+
+
+@app.get("/trading/autopilot/status", response_model=AutoPilotStatusResponse)
+def get_autopilot_status() -> AutoPilotStatusResponse:
+    state = _auto_trader.status()
+    return _autopilot_status_payload(state)
+
+
+@app.post("/trading/autopilot/start", response_model=AutoPilotStatusResponse)
+def start_autopilot(payload: AutoPilotConfigRequest) -> AutoPilotStatusResponse:
+    state = _auto_trader.start(_build_autopilot_config(payload))
+    return _autopilot_status_payload(state)
+
+
+@app.post("/trading/autopilot/stop", response_model=AutoPilotStatusResponse)
+def stop_autopilot() -> AutoPilotStatusResponse:
+    state = _auto_trader.stop()
+    return _autopilot_status_payload(state)
 
 
 @app.get("/health")

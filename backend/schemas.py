@@ -428,3 +428,55 @@ class CopilotResponse(BaseModel):
     autopilot: AutoPilotPlanPayload
     insight: MarketAIResponse
     news: List[NewsItem]
+
+
+class AutoPilotConfigRequest(BaseModel):
+    mode: OrderMode = OrderMode.PAPER
+    market: str = Field("KRW-BTC", min_length=3)
+    interval: str = Field("minute60")
+    risk_appetite: float = Field(0.55, ge=0, le=1)
+    capital: float = Field(20_000_000, gt=0)
+    poll_interval: float = Field(120.0, ge=15.0, le=900.0)
+    include_portfolio: bool = True
+    max_position_pct: float = Field(0.25, ge=0.01, le=1.0)
+    min_confidence_pct: float = Field(55.0, ge=0.0, le=100.0)
+
+
+class AutoPilotLogEntryPayload(BaseModel):
+    timestamp: datetime
+    level: str
+    message: str
+
+
+class AutoPilotExecutionPayload(BaseModel):
+    mode: OrderMode
+    market: str
+    side: Literal["bid", "ask"]
+    price: float
+    volume: float
+    value: float
+    executed_at: datetime
+    detail: str
+
+
+class AutoPilotConfigPayload(BaseModel):
+    mode: OrderMode
+    market: str
+    interval: str
+    risk_appetite: float
+    capital: float
+    poll_interval: float
+    include_portfolio: bool
+    max_position_pct: float
+    min_confidence_pct: float
+
+
+class AutoPilotStatusResponse(BaseModel):
+    running: bool
+    config: Optional[AutoPilotConfigPayload]
+    last_plan: Optional[AutoPilotPlanPayload]
+    last_execution: Optional[AutoPilotExecutionPayload]
+    last_error: Optional[str]
+    last_cycle_started_at: Optional[datetime]
+    last_cycle_completed_at: Optional[datetime]
+    logs: List[AutoPilotLogEntryPayload]

@@ -209,6 +209,7 @@ def analyse_market(
     slow_ema = _ema(closes[-60:], 26)
     rsi = _rsi(closes[-40:])
     macd_value, macd_signal, macd_hist = _macd(closes[-60:])
+    macd_norm = macd_hist / closes[-1] if closes else 0.0
 
     returns: List[float] = []
     for prev, current in zip(closes[:-1], closes[1:]):
@@ -218,20 +219,28 @@ def analyse_market(
 
     volatility = _annualised_volatility(returns[-120:], interval)
     trend_strength = 0.0 if slow_ema == 0 else (fast_ema - slow_ema) / slow_ema
-    regime_score = (trend_strength * 0.6) + ((50 - abs(rsi - 50)) / 100 * 0.2) + (macd_hist * 0.2)
-    probability_of_trend = max(0.0, min(1.0, abs(trend_strength) * 5 + abs(macd_hist)))
+    regime_score = (trend_strength * 0.6) + ((50 - abs(rsi - 50)) / 100 * 0.2) + (macd_norm * 3)
+    probability_of_trend = max(0.0, min(1.0, abs(trend_strength) * 5 + abs(macd_norm) * 3))
 
     price_change_pct = returns[-1] * 100 if returns else 0.0
     support, resistance = _support_resistance(candles)
 
-    if trend_strength > 0.01 and rsi < 68 and macd_hist > 0:
+    if trend_strength > 0.005 and rsi < 72 and macd_norm >= -0.002:
         regime = "강세 추세"
         recommended_action = "추세 추종 매수"
         confidence = min(95.0, 55 + probability_of_trend * 40)
-    elif trend_strength < -0.01 and rsi > 32 and macd_hist < 0:
+    elif trend_strength < -0.005 and macd_norm <= 0.002:
         regime = "약세 추세"
-        recommended_action = "헤지 또는 현금 비중 확대"
+        recommended_action = "방어적 매도 및 현금 비중 확대"
         confidence = min(90.0, 50 + probability_of_trend * 35)
+    elif macd_norm <= -0.01 and rsi >= 65:
+        regime = "과열 반전"
+        recommended_action = "방어적 매도 및 현금 비중 확대"
+        confidence = min(85.0, 48 + probability_of_trend * 30)
+    elif macd_norm >= 0.01 and rsi <= 35:
+        regime = "과매도 반등"
+        recommended_action = "추세 추종 매수"
+        confidence = min(85.0, 48 + probability_of_trend * 30)
     else:
         regime = "중립 / 박스권"
         recommended_action = "범위 매매 또는 대기"
@@ -239,7 +248,7 @@ def analyse_market(
 
     summary = (
         f"{market} {interval} 캔들 기준으로 EMA 격차는 {trend_strength * 100:.2f}%이며 RSI는 {rsi:.1f} 수준입니다. "
-        f"MACD 히스토그램은 {macd_hist:.3f}로 {'상승' if macd_hist >= 0 else '하락'} 압력이 우세합니다."
+        f"MACD 히스토그램은 {macd_norm * 100:.2f}%로 {'상승' if macd_norm >= 0 else '하락'} 압력이 우세합니다."
     )
 
     signals = [
@@ -253,7 +262,7 @@ def analyse_market(
     risk = RiskControlAdvice(
         stop_loss_pct=max(0.8, (volatility * 100) / 3),
         take_profit_pct=min(25.0, max(3.0, volatility * 100 / 2)),
-        trailing_stop_pct=min(15.0, max(2.0, abs(macd_hist) * 10)),
+        trailing_stop_pct=min(15.0, max(2.0, abs(macd_norm) * 100)),
         position_size_pct=max(1.0, 5.0 - probability_of_trend * 2),
         confidence_note="신호 강도에 기반하여 포지션 규모 자동 조정",
         notes=[
@@ -268,7 +277,7 @@ def analyse_market(
         rsi=rsi,
         macd=macd_value,
         macd_signal=macd_signal,
-        macd_histogram=macd_hist,
+        macd_histogram=macd_norm,
         volatility_pct=volatility * 100,
         trend_strength=trend_strength,
         regime_score=regime_score,
@@ -420,11 +429,24 @@ def optimise_portfolio(
     ])
 
     trend_adjustments: Dict[str, float] = {}
+
+    def _fetch_candles(market_code: str):
+        if not candle_fetcher:
+            return []
+        try:
+            return candle_fetcher(market_code, interval="minute60", count=120)
+        except TypeError:
+            return candle_fetcher(market_code, "minute60", 120)
+
     if candle_fetcher:
         for asset in aggressive_assets:
             if not asset.market:
                 continue
-            candles = candle_fetcher(asset.market, "minute60", 120)
+            market_data = _fetch_candles(asset.market)
+            if hasattr(market_data, "candles"):
+                candles = list(market_data.candles)
+            else:
+                candles = list(market_data)
             if len(candles) < _MIN_CANDLES:
                 continue
             insight = analyse_market(candles, market=asset.market, interval="minute60", news=[])
@@ -516,7 +538,11 @@ def optimise_portfolio(
     briefings: List[Dict[str, str]] = []
     if candle_fetcher:
         for market_code in preferred_markets:
-            candles = candle_fetcher(market_code, "minute60", 120)
+            market_data = _fetch_candles(market_code)
+            if hasattr(market_data, "candles"):
+                candles = list(market_data.candles)
+            else:
+                candles = list(market_data)
             if len(candles) < _MIN_CANDLES:
                 continue
             insight = analyse_market(candles, market=market_code, interval="minute60", news=[])
@@ -547,9 +573,12 @@ def optimise_portfolio(
 
 
 def _derive_trade_bias(insight: MarketAIInsight) -> str:
-    if "매수" in insight.recommended_action or "추세" in insight.recommended_action:
+    action = insight.recommended_action or ""
+    if any(keyword in action for keyword in ("매수", "롱", "추세")):
         return "long"
-    if "매도" in insight.recommended_action or "청산" in insight.recommended_action:
+    if any(keyword in action for keyword in ("매도", "숏", "헤지", "현금", "청산")):
+        return "short"
+    if "약세" in (insight.regime or ""):
         return "short"
     return "neutral"
 

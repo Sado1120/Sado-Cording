@@ -156,6 +156,25 @@ const autopilotStopsEl = document.getElementById("autopilot-stops");
 const autopilotTrailingEl = document.getElementById("autopilot-trailing");
 const autopilotReasoningEl = document.getElementById("autopilot-reasoning");
 const autopilotMonitoringEl = document.getElementById("autopilot-monitoring");
+const autopilotForm = document.getElementById("autopilot-form");
+const autopilotModeSelect = document.getElementById("autopilot-mode");
+const autopilotMarketInput = document.getElementById("autopilot-market");
+const autopilotIntervalSelect = document.getElementById("autopilot-interval");
+const autopilotRiskInput = document.getElementById("autopilot-risk");
+const autopilotRiskLabel = document.getElementById("autopilot-risk-label");
+const autopilotCapitalInput = document.getElementById("autopilot-capital");
+const autopilotPollInput = document.getElementById("autopilot-poll");
+const autopilotMaxPositionInput = document.getElementById("autopilot-max-position");
+const autopilotConfidenceInput = document.getElementById("autopilot-confidence");
+const autopilotIncludePortfolioInput = document.getElementById("autopilot-include-portfolio");
+const autopilotStateEl = document.getElementById("autopilot-state");
+const autopilotLastRunEl = document.getElementById("autopilot-last-run");
+const autopilotLastCompletedEl = document.getElementById("autopilot-last-completed");
+const autopilotLastTradeEl = document.getElementById("autopilot-last-trade");
+const autopilotLastErrorEl = document.getElementById("autopilot-last-error");
+const autopilotLogList = document.getElementById("autopilot-log");
+const autopilotStartBtn = document.getElementById("autopilot-start");
+const autopilotStopBtn = document.getElementById("autopilot-stop");
 const copilotLogEl = document.getElementById("copilot-log");
 
 if (copilotQuestionInput && !copilotQuestionInput.value) {
@@ -168,6 +187,7 @@ let chartInstance;
 let liveChartInstance;
 const paperSyncState = new Map();
 const PAPER_STATUS_INTERVAL = 30_000;
+const AUTOPILOT_STATUS_INTERVAL = 45_000;
 
 const normaliseBase = (value) => {
   if (!value) {
@@ -220,6 +240,13 @@ const formatRelativeTime = (date) => {
   if (hours < 24) return `${hours}시간 전`;
   const days = Math.floor(hours / 24);
   return `${days}일 전`;
+};
+
+const formatShortTime = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 };
 
 const renderList = (element, items, placeholder) => {
@@ -562,6 +589,161 @@ const renderAutopilotPlan = (plan) => {
       : "-";
   renderList(autopilotReasoningEl, plan.reasoning, "근거 데이터가 없습니다.");
   renderList(autopilotMonitoringEl, plan.monitoring, "모니터링 항목이 비어 있습니다.");
+};
+
+const renderAutopilotLogs = (logs) => {
+  if (!autopilotLogList) return;
+  autopilotLogList.innerHTML = "";
+  if (!logs || !logs.length) {
+    autopilotLogList.innerHTML = '<li class="autopilot-log__placeholder">로그가 준비 중입니다.</li>';
+    return;
+  }
+  logs
+    .slice()
+    .reverse()
+    .forEach((entry) => {
+      const li = document.createElement("li");
+      const timeEl = document.createElement("time");
+      timeEl.textContent = formatShortTime(entry.timestamp);
+      const messageEl = document.createElement("span");
+      const level = entry.level ? entry.level.toUpperCase() : "INFO";
+      messageEl.textContent = `[${level}] ${entry.message}`;
+      li.appendChild(timeEl);
+      li.appendChild(messageEl);
+      autopilotLogList.appendChild(li);
+    });
+};
+
+const renderAutopilotStatus = (status) => {
+  if (!autopilotStateEl) return;
+  const running = Boolean(status?.running);
+  const hasError = Boolean(status?.last_error);
+  const stateLabel = running ? (hasError ? "주의" : "운영 중") : "대기";
+  const pillState = running ? (hasError ? "warning" : "online") : "offline";
+  autopilotStateEl.dataset.status = pillState;
+  autopilotStateEl.textContent = stateLabel;
+
+  if (autopilotLastRunEl) {
+    autopilotLastRunEl.textContent = status?.last_cycle_started_at
+      ? formatDateTime(new Date(status.last_cycle_started_at))
+      : "-";
+  }
+
+  if (autopilotLastCompletedEl) {
+    autopilotLastCompletedEl.textContent = status?.last_cycle_completed_at
+      ? formatDateTime(new Date(status.last_cycle_completed_at))
+      : "-";
+  }
+
+  if (autopilotLastErrorEl) {
+    autopilotLastErrorEl.textContent = status?.last_error || "";
+    autopilotLastErrorEl.classList.toggle("muted", !status?.last_error);
+  }
+
+  if (status?.config) {
+    if (autopilotModeSelect) autopilotModeSelect.value = status.config.mode;
+    if (autopilotMarketInput) autopilotMarketInput.value = status.config.market;
+    if (autopilotIntervalSelect) autopilotIntervalSelect.value = status.config.interval;
+    if (autopilotRiskInput) {
+      autopilotRiskInput.value = status.config.risk_appetite;
+      updateAutopilotRiskLabel(status.config.risk_appetite);
+    }
+    if (autopilotCapitalInput) autopilotCapitalInput.value = status.config.capital;
+    if (autopilotPollInput) autopilotPollInput.value = status.config.poll_interval;
+    if (autopilotMaxPositionInput) autopilotMaxPositionInput.value = status.config.max_position_pct;
+    if (autopilotConfidenceInput)
+      autopilotConfidenceInput.value = status.config.min_confidence_pct;
+    if (autopilotIncludePortfolioInput)
+      autopilotIncludePortfolioInput.checked = Boolean(status.config.include_portfolio);
+  }
+
+  if (autopilotLastTradeEl) {
+    if (status?.last_execution) {
+      const exec = status.last_execution;
+      const direction = exec.side === "bid" ? "매수" : "매도";
+      const modeLabel = exec.mode === "live" ? "실거래" : "페이퍼";
+      const executedAt = formatDateTime(new Date(exec.executed_at));
+      const detail = exec.detail ? ` · ${exec.detail}` : "";
+      autopilotLastTradeEl.textContent = `${executedAt} · ${modeLabel} · ${exec.market} ${direction} ${ratioFormatter.format(
+        exec.volume,
+      )} @ ${formatCurrency(exec.price)} KRW${detail}`;
+    } else {
+      autopilotLastTradeEl.textContent = "실행 내역이 없습니다.";
+    }
+  }
+
+  renderAutopilotLogs(status?.logs || []);
+  if (status?.last_plan) {
+    renderAutopilotPlan(status.last_plan);
+  }
+};
+
+const fetchAutopilotStatus = async () => {
+  if (!autopilotStateEl) return;
+  try {
+    const status = await requestApi("/trading/autopilot/status");
+    renderAutopilotStatus(status);
+  } catch (error) {
+    autopilotStateEl.dataset.status = "offline";
+    autopilotStateEl.textContent = "오프라인";
+    if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = error.message;
+  }
+};
+
+const handleAutopilotStart = async (event) => {
+  event?.preventDefault();
+  if (!autopilotForm) return;
+
+  const market = (autopilotMarketInput?.value || "").trim().toUpperCase();
+  if (!market) {
+    if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = "먼저 마켓을 입력해주세요.";
+    return;
+  }
+
+  const payload = {
+    mode: autopilotModeSelect?.value || "paper",
+    market,
+    interval: autopilotIntervalSelect?.value || "minute60",
+    risk_appetite: Number(autopilotRiskInput?.value || 0.6),
+    capital: Number(autopilotCapitalInput?.value || 0),
+    poll_interval: Number(autopilotPollInput?.value || 120),
+    max_position_pct: Number(autopilotMaxPositionInput?.value || 0.25),
+    min_confidence_pct: Number(autopilotConfidenceInput?.value || 60),
+    include_portfolio: Boolean(autopilotIncludePortfolioInput?.checked),
+  };
+
+  if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = "";
+
+  try {
+    autopilotStartBtn?.setAttribute("disabled", "true");
+    const status = await requestApi("/trading/autopilot/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    renderAutopilotStatus(status);
+  } catch (error) {
+    autopilotStateEl.dataset.status = "warning";
+    autopilotStateEl.textContent = "오류";
+    if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = error.message;
+  } finally {
+    autopilotStartBtn?.removeAttribute("disabled");
+  }
+};
+
+const handleAutopilotStop = async () => {
+  if (!autopilotStateEl) return;
+  try {
+    autopilotStopBtn?.setAttribute("disabled", "true");
+    const status = await requestApi("/trading/autopilot/stop", { method: "POST" });
+    renderAutopilotStatus(status);
+  } catch (error) {
+    autopilotStateEl.dataset.status = "warning";
+    autopilotStateEl.textContent = "중지 실패";
+    if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = error.message;
+  } finally {
+    autopilotStopBtn?.removeAttribute("disabled");
+  }
 };
 
 const appendCopilotLog = (payload) => {
@@ -958,6 +1140,13 @@ const updateAIRiskLabel = (value) => {
   const numeric = Number(value);
   const descriptor = describeRiskLevel(numeric);
   aiRiskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
+};
+
+const updateAutopilotRiskLabel = (value) => {
+  if (!autopilotRiskLabel) return;
+  const numeric = Number(value);
+  const descriptor = describeRiskLevel(numeric);
+  autopilotRiskLabel.textContent = `${descriptor} (${percentFormatter.format(numeric * 100)}%)`;
 };
 
 const updateAlphaBriefing = (report) => {
@@ -1538,6 +1727,13 @@ if (aiRiskSlider) {
   });
 }
 
+if (autopilotRiskInput) {
+  updateAutopilotRiskLabel(autopilotRiskInput.value);
+  autopilotRiskInput.addEventListener("input", (event) => {
+    updateAutopilotRiskLabel(event.target.value);
+  });
+}
+
 if (copilotRiskSlider) {
   updateCopilotRiskLabel(copilotRiskSlider.value);
   copilotRiskSlider.addEventListener("input", (event) => {
@@ -1551,6 +1747,8 @@ document.getElementById("generate-data-btn")?.addEventListener("click", handleSy
 document.getElementById("rebalance-btn")?.addEventListener("click", handleRebalance);
 document.getElementById("blueprint-form")?.addEventListener("submit", handleBlueprint);
 document.getElementById("blueprint-btn")?.addEventListener("click", handleBlueprint);
+autopilotForm?.addEventListener("submit", handleAutopilotStart);
+autopilotStopBtn?.addEventListener("click", handleAutopilotStop);
 aiPortfolioForm?.addEventListener("submit", handleAiPortfolio);
 copilotForm?.addEventListener("submit", handleCopilot);
 orderForm?.addEventListener("submit", handleOrderSubmit);
@@ -1576,6 +1774,7 @@ liveMarketInput?.addEventListener("keydown", (event) => {
 
 refreshApiStatus();
 fetchPaperStatus();
+fetchAutopilotStatus().catch(() => {});
 handleSimulation().catch(() => {});
 refreshLiveMarket().catch(() => {});
 refreshMarketIntelligence().catch(() => {});
@@ -1594,3 +1793,6 @@ setInterval(() => {
 setInterval(() => {
   fetchPaperStatus().catch(() => {});
 }, PAPER_STATUS_INTERVAL);
+setInterval(() => {
+  fetchAutopilotStatus().catch(() => {});
+}, AUTOPILOT_STATUS_INTERVAL);
