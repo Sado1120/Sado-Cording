@@ -266,6 +266,42 @@ body {
   color: var(--accent);
 }
 
+.ai-consensus {
+  margin-top: 1.5rem;
+  background: rgba(9, 15, 28, 0.6);
+  border: 1px solid rgba(122, 225, 255, 0.12);
+  border-radius: 18px;
+  padding: 1.2rem 1.4rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ai-consensus__headline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ai-consensus__details {
+  list-style: none;
+  padding-left: 1rem;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.ai-consensus__details li::before {
+  content: "↳";
+  margin-right: 0.4rem;
+  color: var(--accent);
+}
+
+.ai-consensus__placeholder {
+  color: var(--text-tertiary);
+}
+
 .ai-news__list {
   list-style: none;
   display: grid;
@@ -425,6 +461,68 @@ body {
   flex-direction: column;
   gap: 1rem;
   min-height: 180px;
+}
+
+.system-card--diagnostics {
+  gap: 1.25rem;
+}
+
+.diagnostics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.diagnostics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.diagnostics-list li {
+  border-radius: 14px;
+  border: 1px solid rgba(122, 225, 255, 0.12);
+  padding: 0.75rem 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr auto;
+  gap: 0.65rem;
+  align-items: center;
+  font-size: 0.9rem;
+  background: rgba(8, 13, 26, 0.6);
+}
+
+.diagnostics-list li[data-status="ok"] {
+  border-color: rgba(66, 211, 164, 0.4);
+}
+
+.diagnostics-list li[data-status="warning"] {
+  border-color: rgba(255, 183, 77, 0.45);
+  background: rgba(255, 183, 77, 0.08);
+}
+
+.diagnostics-list li[data-status="error"] {
+  border-color: rgba(255, 99, 132, 0.5);
+  background: rgba(255, 99, 132, 0.08);
+}
+
+.diagnostics-placeholder {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.diagnostic-name {
+  font-weight: 600;
+}
+
+.diagnostic-detail {
+  color: var(--text-secondary);
+}
+
+.diagnostic-latency {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
 }
 
 .system-card--description h3 {

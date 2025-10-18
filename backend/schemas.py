@@ -320,6 +320,13 @@ class RiskControlAdvicePayload(BaseModel):
     notes: List[str]
 
 
+class TimeframeConsensusPayload(BaseModel):
+    dominant_trend: str
+    agreement_pct: float
+    intervals: List[str]
+    details: List[str]
+
+
 class MarketAIResponse(BaseModel):
     market: str
     interval: str
@@ -332,6 +339,7 @@ class MarketAIResponse(BaseModel):
     risk: RiskControlAdvicePayload
     generated_at: datetime
     news: List[NewsItem]
+    timeframe_consensus: "TimeframeConsensusPayload"
 
 
 class PortfolioAssetInput(BaseModel):
@@ -480,3 +488,15 @@ class AutoPilotStatusResponse(BaseModel):
     last_cycle_started_at: Optional[datetime]
     last_cycle_completed_at: Optional[datetime]
     logs: List[AutoPilotLogEntryPayload]
+
+
+class DiagnosticCheckPayload(BaseModel):
+    name: str
+    status: Literal["ok", "warning", "error"]
+    detail: str
+    latency_ms: float
+
+
+class DiagnosticsResponse(BaseModel):
+    generated_at: datetime
+    checks: List[DiagnosticCheckPayload]

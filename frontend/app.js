@@ -123,6 +123,9 @@ const aiRiskNoteEl = document.getElementById("ai-risk-note");
 const aiRiskNotesEl = document.getElementById("ai-risk-notes");
 const aiNewsEl = document.getElementById("ai-news");
 const aiRefreshBtn = document.getElementById("ai-refresh");
+const aiConsensusDominantEl = document.getElementById("ai-consensus-dominant");
+const aiConsensusAgreementEl = document.getElementById("ai-consensus-agreement");
+const aiConsensusDetailsEl = document.getElementById("ai-consensus-details");
 const aiPortfolioForm = document.getElementById("ai-portfolio-form");
 const aiRiskSlider = document.getElementById("ai-risk");
 const aiRiskLabel = document.getElementById("ai-risk-label");
@@ -176,6 +179,8 @@ const autopilotLogList = document.getElementById("autopilot-log");
 const autopilotStartBtn = document.getElementById("autopilot-start");
 const autopilotStopBtn = document.getElementById("autopilot-stop");
 const copilotLogEl = document.getElementById("copilot-log");
+const diagnosticsListEl = document.getElementById("diagnostics-list");
+const diagnosticsRefreshBtn = document.getElementById("diagnostics-refresh");
 
 if (copilotQuestionInput && !copilotQuestionInput.value) {
   copilotQuestionInput.value = "지금 시장 전략을 요약해줘";
@@ -536,6 +541,22 @@ const renderMarketIntelligence = (insight) => {
         li.appendChild(meta);
         aiNewsEl.appendChild(li);
       });
+    }
+  }
+
+  const consensus = insight.timeframe_consensus;
+  if (consensus && aiConsensusDominantEl && aiConsensusAgreementEl && aiConsensusDetailsEl) {
+    aiConsensusDominantEl.textContent = consensus.dominant_trend;
+    aiConsensusAgreementEl.textContent = `일치율 ${formatPercent(consensus.agreement_pct)}`;
+    aiConsensusDetailsEl.innerHTML = "";
+    if (Array.isArray(consensus.details) && consensus.details.length) {
+      consensus.details.forEach((detail) => {
+        const li = document.createElement("li");
+        li.textContent = detail;
+        aiConsensusDetailsEl.appendChild(li);
+      });
+    } else {
+      aiConsensusDetailsEl.innerHTML = '<li class="ai-consensus__placeholder">컨센서스 세부 정보가 없습니다.</li>';
     }
   }
 };
@@ -957,6 +978,45 @@ const refreshNews = async () => {
     }
   } catch (error) {
     newsListEl.innerHTML = `<li class="news-placeholder">${error.message}</li>`;
+  }
+};
+
+const renderDiagnostics = (checks) => {
+  if (!diagnosticsListEl) return;
+  diagnosticsListEl.innerHTML = "";
+  if (!checks || !checks.length) {
+    diagnosticsListEl.innerHTML = '<li class="diagnostics-placeholder">진단 결과가 비어 있습니다.</li>';
+    return;
+  }
+
+  checks.forEach((check) => {
+    const li = document.createElement("li");
+    li.dataset.status = check.status || "ok";
+    const nameEl = document.createElement("span");
+    nameEl.className = "diagnostic-name";
+    nameEl.textContent = check.name;
+    const detailEl = document.createElement("span");
+    detailEl.className = "diagnostic-detail";
+    detailEl.textContent = check.detail;
+    const latencyEl = document.createElement("span");
+    latencyEl.className = "diagnostic-latency";
+    const latency = Number(check.latency_ms);
+    latencyEl.textContent = Number.isFinite(latency) ? `${latency.toFixed(1)}ms` : "-";
+    li.appendChild(nameEl);
+    li.appendChild(detailEl);
+    li.appendChild(latencyEl);
+    diagnosticsListEl.appendChild(li);
+  });
+};
+
+const refreshDiagnostics = async () => {
+  if (!diagnosticsListEl) return;
+  diagnosticsListEl.innerHTML = '<li class="diagnostics-placeholder">진단 실행 중...</li>';
+  try {
+    const payload = await requestApi("/diagnostics/full");
+    renderDiagnostics(payload.checks);
+  } catch (error) {
+    diagnosticsListEl.innerHTML = `<li class="diagnostics-placeholder">${error.message}</li>`;
   }
 };
 
@@ -1762,6 +1822,9 @@ liveRefreshBtn?.addEventListener("click", () => {
 aiRefreshBtn?.addEventListener("click", () => {
   refreshMarketIntelligence().catch(() => {});
 });
+diagnosticsRefreshBtn?.addEventListener("click", () => {
+  refreshDiagnostics().catch(() => {});
+});
 liveIntervalSelect?.addEventListener("change", () => {
   refreshLiveMarket();
 });
@@ -1778,6 +1841,7 @@ fetchAutopilotStatus().catch(() => {});
 handleSimulation().catch(() => {});
 refreshLiveMarket().catch(() => {});
 refreshMarketIntelligence().catch(() => {});
+refreshDiagnostics().catch(() => {});
 handleAiPortfolio().catch(() => {});
 refreshNews().catch(() => {});
 handleCopilot().catch(() => {});
@@ -1796,3 +1860,6 @@ setInterval(() => {
 setInterval(() => {
   fetchAutopilotStatus().catch(() => {});
 }, AUTOPILOT_STATUS_INTERVAL);
+setInterval(() => {
+  refreshDiagnostics().catch(() => {});
+}, 300_000);

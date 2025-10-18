@@ -1,6 +1,7 @@
 """AI-enhanced analytics and portfolio optimisation utilities."""
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import sqrt
@@ -41,6 +42,17 @@ class RiskControlAdvice:
 
 
 @dataclass
+@dataclass
+class TimeframeConsensus:
+    """Consensus view across multiple look-back windows."""
+
+    dominant_trend: str
+    agreement_pct: float
+    intervals: List[str]
+    details: List[str]
+
+
+@dataclass
 class MarketAIInsight:
     market: str
     interval: str
@@ -53,6 +65,7 @@ class MarketAIInsight:
     risk: RiskControlAdvice
     generated_at: datetime
     news: List[Dict[str, str]]
+    timeframe_consensus: TimeframeConsensus
 
 
 @dataclass
@@ -194,6 +207,75 @@ def _support_resistance(candles: Sequence[Candle]) -> Tuple[float, float]:
     return min(lows), max(highs)
 
 
+def _classify_trend_window(candles: Sequence[Candle]) -> Tuple[str, float]:
+    if len(candles) < 10:
+        return "데이터 부족", 0.0
+
+    closes = [candle.close for candle in candles]
+    fast = _ema(closes[-min(len(closes), 12) :], min(12, len(closes)))
+    slow = _ema(closes[-min(len(closes), 26) :], min(26, len(closes)))
+    trend = 0.0 if slow == 0 else (fast - slow) / slow
+    rsi = _rsi(closes, period=min(14, len(closes) - 1))
+
+    if trend > 0.004 and rsi >= 55:
+        label = "상승"
+    elif trend < -0.004 and rsi <= 45:
+        label = "하락"
+    else:
+        label = "중립"
+
+    confidence = min(100.0, abs(trend) * 8000 + abs(rsi - 50) * 2)
+    return label, confidence
+
+
+def build_timeframe_consensus(
+    candles: Sequence[Candle], *, market: str, interval: str
+) -> TimeframeConsensus:
+    if len(candles) < _MIN_CANDLES:
+        return TimeframeConsensus(
+            dominant_trend="데이터 부족",
+            agreement_pct=0.0,
+            intervals=[f"{market} {interval}"],
+            details=["캔들이 충분하지 않아 합의를 도출하지 못했습니다."],
+        )
+
+    specs = [
+        ("단기 (최근 20)", 20),
+        ("중기 (최근 60)", 60),
+        ("장기 (최근 120)", 120),
+    ]
+
+    results: List[Tuple[str, str, float]] = []
+    for label, window in specs:
+        window_candles = list(candles[-window:]) if len(candles) >= window else list(candles)
+        trend_label, confidence = _classify_trend_window(window_candles)
+        results.append((label, trend_label, confidence))
+
+    score_map: Dict[str, float] = defaultdict(float)
+    for _, trend_label, confidence in results:
+        score_map[trend_label] += confidence
+
+    if not score_map:
+        dominant = "중립"
+    else:
+        dominant = max(score_map.items(), key=lambda item: item[1])[0]
+
+    agreement = (
+        sum(1 for _, trend_label, _ in results if trend_label == dominant) / len(results) * 100
+        if results
+        else 0.0
+    )
+
+    details = [f"{label}: {trend_label} (신뢰도 {confidence:.0f}%)" for label, trend_label, confidence in results]
+
+    return TimeframeConsensus(
+        dominant_trend=dominant,
+        agreement_pct=agreement,
+        intervals=[label for label, _, _ in results],
+        details=details,
+    )
+
+
 def analyse_market(
     candles: Sequence[Candle],
     *,
@@ -287,6 +369,8 @@ def analyse_market(
         resistance_level=resistance,
     )
 
+    consensus = build_timeframe_consensus(candles, market=market, interval=interval)
+
     return MarketAIInsight(
         market=market,
         interval=interval,
@@ -299,6 +383,7 @@ def analyse_market(
         risk=risk,
         generated_at=datetime.now(timezone.utc),
         news=news or fetch_authoritative_news(limit=4),
+        timeframe_consensus=consensus,
     )
 
 
@@ -627,12 +712,19 @@ def craft_autopilot_plan(
         f"MACD 히스토그램 {insight.metrics.macd_histogram:.3f}",
     ]
 
+    consensus = insight.timeframe_consensus
+
     if portfolio_plan:
         top_allocation = max(portfolio_plan.allocations, key=lambda item: item.weight, default=None)
         if top_allocation:
             reasoning.append(
                 f"포트폴리오 핵심 배분: {top_allocation.symbol} {top_allocation.weight * 100:.1f}%"
             )
+
+    if consensus and consensus.details:
+        reasoning.append(
+            f"다중 타임프레임 합의: {consensus.dominant_trend} ({consensus.agreement_pct:.0f}% 일치)"
+        )
 
     if bias == "short" and insight.metrics.price_change_pct > 0:
         reasoning.append("최근 상승폭을 활용한 차익 실현 구간")
@@ -644,6 +736,10 @@ def craft_autopilot_plan(
         monitoring.append(f"권장 포지션 규모 약 {position_value:,.0f} KRW")
 
     monitoring.extend(risk.notes)
+    if consensus and consensus.details:
+        for detail in consensus.details[:2]:
+            if detail not in monitoring:
+                monitoring.append(detail)
 
     return AutoPilotOrderPlan(
         market=insight.market,
@@ -677,6 +773,12 @@ def generate_copilot_synthesis(
         f"연환산 변동성 {insight.metrics.volatility_pct:.2f}% · 최근 변화 {insight.metrics.price_change_pct:.2f}%",
     ]
 
+    consensus = insight.timeframe_consensus
+    if consensus and consensus.details:
+        summary_points.append(
+            f"다중 타임프레임: {consensus.dominant_trend} ({consensus.agreement_pct:.0f}% 일치)"
+        )
+
     highlights: List[str] = []
     if portfolio_plan:
         sorted_allocations = sorted(
@@ -704,6 +806,8 @@ def generate_copilot_synthesis(
         action_items.append("추세 모호 · 포지션 축소 또는 관망 유지")
 
     risk_notices = [f"모니터링: {item}" for item in autopilot.monitoring]
+    if consensus and consensus.details:
+        risk_notices.append(f"컨센서스 상세: {consensus.details[0]}")
     if mode == "live":
         risk_notices.append("실거래 모드: 업비트 API 키와 주문 한도를 다시 확인하세요.")
     else:

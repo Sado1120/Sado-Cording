@@ -8,6 +8,8 @@ def test_analyse_market_with_synthetic():
     assert insight.recommended_action
     assert insight.metrics.rsi >= 0
     assert 0 <= insight.confidence_pct <= 100
+    assert insight.timeframe_consensus.dominant_trend
+    assert insight.timeframe_consensus.details
 
 
 def test_optimise_portfolio_with_trend_adjustment():
@@ -54,3 +56,4 @@ def test_copilot_autopilot_generates_plan():
     assert "Sado Trade Bot" in synthesis.answer
     assert synthesis.summary_points
     assert synthesis.autopilot is autopilot
+    assert any("다중 타임프레임" in point for point in synthesis.summary_points)

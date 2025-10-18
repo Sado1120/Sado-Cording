@@ -10,6 +10,7 @@ from backend.app import (
 from backend.market import MarketData, build_market_insights, fetch_authoritative_news, fetch_upbit_candles
 from backend.schemas import PortfolioOptimizationRequest
 from backend.trading import Candle, generate_synthetic_prices
+import backend.app as app_module
 
 
 def test_fetch_upbit_candles_fallback(monkeypatch):
@@ -117,3 +118,17 @@ def test_ai_endpoints(monkeypatch):
     portfolio = optimize_portfolio(request)
     assert portfolio.allocations
     assert portfolio.expected_return_pct > 0
+
+
+def test_diagnostics_endpoint(monkeypatch):
+    synthetic = generate_synthetic_prices(days=120, seed=5)
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=synthetic, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    diagnostics = app_module._diagnostics_summary()
+    assert diagnostics.checks
+    names = {check.name for check in diagnostics.checks}
+    assert "업비트 연결" in names

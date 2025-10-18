@@ -65,6 +65,15 @@
               설비 고장 Copilot UI 스타일을 그대로 적용해 공장 설비와 자동매매 현황을 한 화면에서 모니터링할 수 있도록 디자인했습니다.
             </p>
           </article>
+          <article class="system-card system-card--diagnostics">
+            <div class="diagnostics-header">
+              <h3>프로 진단</h3>
+              <button id="diagnostics-refresh" class="btn btn--ghost btn--compact" type="button">재실행</button>
+            </div>
+            <ul id="diagnostics-list" class="diagnostics-list">
+              <li class="diagnostics-placeholder">진단을 시작하려면 재실행을 눌러주세요.</li>
+            </ul>
+          </article>
         </div>
       </section>
 
@@ -171,6 +180,16 @@
               </dl>
               <p id="ai-risk-note" class="ai-risk__note">AI가 리스크 관리 코멘트를 여기에 표기합니다.</p>
               <ul id="ai-risk-notes" class="ai-risk__list"></ul>
+            </div>
+            <div class="ai-consensus">
+              <h4>다중 타임프레임 합의</h4>
+              <div class="ai-consensus__headline">
+                <span id="ai-consensus-dominant" class="badge badge--ghost">-</span>
+                <span id="ai-consensus-agreement" class="muted">일치율 0%</span>
+              </div>
+              <ul id="ai-consensus-details" class="ai-consensus__details">
+                <li>컨센서스 데이터가 준비 중입니다.</li>
+              </ul>
             </div>
           </article>
           <article class="ai-news">

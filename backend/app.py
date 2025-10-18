@@ -1,7 +1,9 @@
 """FastAPI application exposing Sado Trade Bot capabilities."""
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from time import perf_counter
 from typing import Iterable, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -30,6 +32,7 @@ from .schemas import (
     PortfolioOptimizationResponse,
     MarketAIMetricsPayload,
     RiskControlAdvicePayload,
+    TimeframeConsensusPayload,
     PaperBalancePayload,
     PaperMarkRequest,
     PaperOrderPayload,
@@ -46,6 +49,8 @@ from .schemas import (
     AutoPilotExecutionPayload,
     AutoPilotLogEntryPayload,
     AutoPilotStatusResponse,
+    DiagnosticsResponse,
+    DiagnosticCheckPayload,
 )
 from .execution import (
     ExecutionError,
@@ -418,10 +423,11 @@ def get_market_intelligence(
         confidence_pct=insight.confidence_pct,
         summary=insight.summary,
         signals=insight.signals,
-        metrics=insight.metrics.__dict__,
-        risk=insight.risk.__dict__,
+        metrics=MarketAIMetricsPayload(**insight.metrics.__dict__),
+        risk=RiskControlAdvicePayload(**insight.risk.__dict__),
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
+        timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
     )
 
 
@@ -434,10 +440,78 @@ def get_news(limit: int = 8) -> NewsResponse:
     return NewsResponse(generated_at=datetime.utcnow(), items=items)
 
 
+@app.get("/diagnostics/full", response_model=DiagnosticsResponse)
+def diagnostics_full() -> DiagnosticsResponse:
+    return _diagnostics_summary()
+
+
 def _paper_status_response() -> PaperStatusResponse:
     snapshot = _paper_broker.snapshot()
     balance = _serialize_balance(snapshot)
     return PaperStatusResponse(**balance.dict())
+
+
+def _run_check(name: str, func) -> DiagnosticCheckPayload:
+    start = perf_counter()
+    status = "ok"
+    detail = "정상"
+    try:
+        result = func()
+        if isinstance(result, tuple):
+            detail = str(result[0])
+            status = result[1] or status
+        elif isinstance(result, str):
+            detail = result
+        elif result is not None:
+            detail = str(result)
+    except Exception as exc:  # pragma: no cover - diagnostics should surface errors
+        status = "error"
+        detail = str(exc)
+    latency = round((perf_counter() - start) * 1000, 2)
+    return DiagnosticCheckPayload(name=name, status=status, detail=detail, latency_ms=latency)
+
+
+def _diagnostics_summary() -> DiagnosticsResponse:
+    checks: list[DiagnosticCheckPayload] = []
+
+    def _check_upbit():
+        data = fetch_upbit_candles(market="KRW-BTC", interval="minute60", count=80)
+        if data.source == "synthetic":
+            return "업비트 응답 없음 - 시뮬레이션 데이터 사용", "warning"
+        return f"{len(data.candles)} 캔들 확보", "ok"
+
+    def _check_paper():
+        snapshot = _paper_broker.snapshot()
+        return f"현금 {snapshot.cash:,.0f} KRW · 포지션 {len(snapshot.positions)}건", "ok"
+
+    def _check_autopilot():
+        state = _auto_trader.status()
+        if state.last_error:
+            level = "warning" if not state.running else "error"
+            return f"최근 오류: {state.last_error}", level
+        if state.running:
+            return "자동매매 루프 실행 중", "ok"
+        return "오토파일럿 대기 상태", "ok"
+
+    def _check_strategy():
+        candles = trading.generate_synthetic_prices(days=120, seed=42)
+        report = trading.run_ema_strategy(candles)
+        return f"시뮬레이션 수익률 {report.total_return_pct:.2f}%", "ok"
+
+    def _check_keys():
+        has_access = bool(os.getenv("UPBIT_ACCESS_KEY"))
+        has_secret = bool(os.getenv("UPBIT_SECRET_KEY"))
+        if has_access and has_secret:
+            return "실거래 키 감지", "ok"
+        return "실거래 키 미설정 - 페이퍼 모드", "warning"
+
+    checks.append(_run_check("업비트 연결", _check_upbit))
+    checks.append(_run_check("페이퍼 브로커", _check_paper))
+    checks.append(_run_check("오토파일럿", _check_autopilot))
+    checks.append(_run_check("전략 엔진", _check_strategy))
+    checks.append(_run_check("실거래 키", _check_keys))
+
+    return DiagnosticsResponse(generated_at=datetime.utcnow(), checks=checks)
 
 
 @app.post("/ai/portfolio/optimize", response_model=PortfolioOptimizationResponse)
@@ -563,6 +637,7 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
         risk=RiskControlAdvicePayload(**insight.risk.__dict__),
         generated_at=insight.generated_at,
         news=_news_items(insight.news),
+        timeframe_consensus=TimeframeConsensusPayload(**insight.timeframe_consensus.__dict__),
     )
 
     return CopilotResponse(
