@@ -83,6 +83,8 @@ Synology 컨테이너나 로컬 개발 환경에서 동일한 구성을 재현�
    ```
    `serve.py`는 모든 정적 자산에 `charset=utf-8` 헤더를 강제 적용하므로 한글이 깨지지 않으며, Synology 8501 포트에서도 동일한 폰트 품질을 유지합니다. 여기에 `/api/*` 요청을 FastAPI 백엔드로 역방향 프록시하는 기능을 추가해 외부에서는 8501 포트만 공개해도 됩니다. 내부 Docker 네트워크에서는 `http://backend:8000`으로 통신하고, 브라우저에서는 `http://<대시보드 호스트>:8501/api/...` 경로로 호출하므로 방화벽 정책을 단순화할 수 있습니다. 필요 시 프런트엔드 상단의 "운영 상태 모니터" 카드에서 엔드포인트를 수동으로 바꾸고, 바로 아래 Synology Chat 테스트/상태 카드로 웹훅 수신 여부와 최근 성공·실패 기록을 동시에 점검할 수 있습니다.
 
+   로컬 PC나 Synology에서 단독으로 `python frontend/serve.py`를 실행할 경우에도 자동으로 `http://127.0.0.1:8000`/`http://localhost:8000` 후보를 순차적으로 시도해 백엔드에 연결합니다. Docker Compose처럼 컨테이너 간 통신이 필요한 경우에는 `BACKEND_URL=http://backend:8000` 환경 변수를 지정해 동일 네트워크의 백엔드 서비스를 우선 사용합니다.
+
 4. (선택) `.env` 파일로 민감 정보 관리 – 실거래 API 키를 사용할 경우 `cp .env.example .env`로 복사한 뒤 값을 채우고, `uvicorn --env-file .env backend.app:app --reload`처럼 실행하면 됩니다.
 
 ### Docker Compose로 올인원 실행

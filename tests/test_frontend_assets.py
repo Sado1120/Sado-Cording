@@ -60,7 +60,8 @@ def test_utf8_request_handler_sets_html_utf8_content_type():
     assert handler.guess_type("app.js") == "application/javascript; charset=utf-8"
 
 
-def test_resolve_backend_url_maps_api_prefix():
+def test_resolve_backend_url_maps_api_prefix(monkeypatch):
+    monkeypatch.setattr(serve, "BACKEND_URL", "http://example.com")
     assert resolve_backend_url("/api/health").endswith("/health")
     assert resolve_backend_url("/api").endswith("/")
 
@@ -94,6 +95,8 @@ def test_dashboard_handler_proxies_api_requests(monkeypatch):
         return FakeResponse()
 
     monkeypatch.setattr(serve, "urlopen", fake_urlopen)
+    monkeypatch.setattr(serve, "BACKEND_CANDIDATES", ["http://127.0.0.1:8000"])
+    monkeypatch.setattr(serve, "BACKEND_URL", "http://127.0.0.1:8000")
 
     handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
     handler.path = "/api/health"
@@ -108,7 +111,7 @@ def test_dashboard_handler_proxies_api_requests(monkeypatch):
 
     handler.do_GET()
 
-    assert captured["url"] == f"{serve.BACKEND_URL}/health"
+    assert captured["url"] == "http://127.0.0.1:8000/health"
     assert captured["method"] == "GET"
     assert handler.wfile.getvalue().endswith(b"{\"status\": \"ok\"}")
 
@@ -118,6 +121,7 @@ def test_dashboard_handler_returns_json_on_backend_failure(monkeypatch):
         raise URLError("down")
 
     monkeypatch.setattr(serve, "urlopen", fake_urlopen)
+    monkeypatch.setattr(serve, "BACKEND_CANDIDATES", ["http://127.0.0.1:8000"])
 
     handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
     handler.path = "/api/health"
@@ -136,3 +140,57 @@ def test_dashboard_handler_returns_json_on_backend_failure(monkeypatch):
     assert payload.startswith(b"HTTP/1.0 502"), payload
     _, body = payload.split(b"\r\n\r\n", 1)
     assert body.startswith(b"{\"detail\"")
+
+
+def test_dashboard_handler_falls_back_to_localhost(monkeypatch):
+    attempts = []
+
+    class FakeResponse:
+        def __init__(self, url):
+            self._url = url
+            self._headers = {"Content-Type": "application/json"}
+
+        def read(self):
+            return b"{}"
+
+        def getcode(self):
+            return 200
+
+        def getheaders(self):
+            return list(self._headers.items())
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_urlopen(request, timeout=15):  # noqa: ARG001
+        attempts.append(request.full_url)
+        if request.full_url.startswith("http://backend:8000"):
+            raise URLError("unreachable")
+        return FakeResponse(request.full_url)
+
+    monkeypatch.setattr(serve, "urlopen", fake_urlopen)
+    monkeypatch.setattr(
+        serve,
+        "BACKEND_CANDIDATES",
+        ["http://backend:8000", "http://127.0.0.1:8000"],
+    )
+    monkeypatch.setattr(serve, "BACKEND_URL", "http://backend:8000")
+
+    handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
+    handler.path = "/api/health"
+    handler.command = "GET"
+    handler.request_version = "HTTP/1.1"
+    handler.requestline = "GET /api/health HTTP/1.1"
+    handler.client_address = ("127.0.0.1", 0)
+    handler.server = None
+    handler.headers = Message()
+    handler.rfile = BytesIO()
+    handler.wfile = BytesIO()
+
+    handler.do_GET()
+
+    assert attempts == ["http://backend:8000/health", "http://127.0.0.1:8000/health"]
+    assert handler.wfile.getvalue().endswith(b"{}")
