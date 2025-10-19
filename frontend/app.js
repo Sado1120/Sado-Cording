@@ -14,6 +14,41 @@ const DEFAULT_API_BASE = (() => {
   return `${origin}/api`;
 })();
 
+const HOSTS_VISIBLE_ONLY_INSIDE_CONTAINERS = new Set(["backend", "frontend", "api", "web"]);
+const LOCAL_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
+
+const shouldResetStoredBase = (value) => {
+  if (!value) {
+    return true;
+  }
+
+  if (value.startsWith("/")) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    const host = (url.hostname || "").toLowerCase();
+    const currentHost = (window.location.hostname || "").toLowerCase();
+
+    if (HOSTS_VISIBLE_ONLY_INSIDE_CONTAINERS.has(host) && host !== currentHost) {
+      return true;
+    }
+
+    if (
+      LOCAL_LOOPBACK_HOSTS.has(host) &&
+      host !== currentHost &&
+      !LOCAL_LOOPBACK_HOSTS.has(currentHost)
+    ) {
+      return true;
+    }
+  } catch (error) {
+    return true;
+  }
+
+  return false;
+};
+
 const percentFormatter = new Intl.NumberFormat("ko-KR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -677,7 +712,22 @@ const normaliseBase = (value) => {
   return value.replace(/\/+$/, "");
 };
 
-let apiBase = normaliseBase(localStorage.getItem(STORAGE_KEY) || DEFAULT_API_BASE);
+const loadInitialApiBase = () => {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) {
+    return DEFAULT_API_BASE;
+  }
+
+  const normalised = normaliseBase(stored);
+  if (shouldResetStoredBase(normalised)) {
+    localStorage.removeItem(STORAGE_KEY);
+    return DEFAULT_API_BASE;
+  }
+
+  return normalised;
+};
+
+let apiBase = loadInitialApiBase();
 
 const getApiBase = () => apiBase;
 
@@ -1608,7 +1658,17 @@ const requestApi = async (path, options = {}) => {
   try {
     response = await fetch(url, config);
   } catch (error) {
-    throw new Error("API 연결에 실패했습니다. 엔드포인트를 확인해주세요.");
+    if (shouldResetStoredBase(base) && base !== DEFAULT_API_BASE) {
+      apiBase = DEFAULT_API_BASE;
+      localStorage.setItem(STORAGE_KEY, apiBase);
+      if (apiEndpointInput && apiEndpointInput.value !== apiBase) {
+        apiEndpointInput.value = apiBase;
+      }
+      return requestApi(path, options);
+    }
+
+    const message = `API 연결에 실패했습니다. 현재 엔드포인트: ${base}`;
+    throw new Error(message);
   }
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
