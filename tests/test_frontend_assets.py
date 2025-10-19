@@ -194,3 +194,10 @@ def test_dashboard_handler_falls_back_to_localhost(monkeypatch):
 
     assert attempts == ["http://backend:8000/health", "http://127.0.0.1:8000/health"]
     assert handler.wfile.getvalue().endswith(b"{}")
+
+
+def test_app_js_falls_back_to_default_api_base():
+    js = (PROJECT_ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+
+    assert "base !== DEFAULT_API_BASE" in js, "requestApi should attempt default base when current endpoint fails"
+    assert "API 연결에 실패했습니다" in js, "User-facing error message must remain in Korean"

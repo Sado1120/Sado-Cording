@@ -1658,7 +1658,7 @@ const requestApi = async (path, options = {}) => {
   try {
     response = await fetch(url, config);
   } catch (error) {
-    if (shouldResetStoredBase(base) && base !== DEFAULT_API_BASE) {
+    if (base !== DEFAULT_API_BASE) {
       apiBase = DEFAULT_API_BASE;
       localStorage.setItem(STORAGE_KEY, apiBase);
       if (apiEndpointInput && apiEndpointInput.value !== apiBase) {
@@ -1668,6 +1668,9 @@ const requestApi = async (path, options = {}) => {
     }
 
     const message = `API 연결에 실패했습니다. 현재 엔드포인트: ${base}`;
+    if (error && error.message) {
+      throw new Error(`${message} · ${error.message}`);
+    }
     throw new Error(message);
   }
 
