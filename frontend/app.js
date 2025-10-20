@@ -1819,7 +1819,7 @@ const executeApiRequest = async (base, path, buildConfig) => {
   return parsedPayload;
 };
 
-const requestApi = async (path, options = {}) => {
+async function requestApi(path, options = {}) {
   const attempted = new Set();
   const buildConfig = () => {
     const config = { ...options };
@@ -1859,7 +1859,7 @@ const requestApi = async (path, options = {}) => {
       throw lastError || error;
     }
   }
-};
+}
 
 const renderPaperSummary = (balance) => {
   if (!balance) {
