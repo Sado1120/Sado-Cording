@@ -73,9 +73,44 @@ def test_fetch_authoritative_news_fallback(monkeypatch):
         raise OSError("timeout")
 
     monkeypatch.setattr("backend.market.urlopen", raise_error)
+    monkeypatch.setattr(
+        "backend.market._news_state",
+        {"status": "unknown", "checked_at": 0.0, "cached_items": [], "cached_at": 0.0},
+    )
     headlines = fetch_authoritative_news(limit=3)
     assert len(headlines) == 3
     assert all("title" in item for item in headlines)
+
+
+def test_fetch_authoritative_news_backoff(monkeypatch):
+    call_count = {"value": 0}
+
+    def raise_error(*args, **kwargs):
+        call_count["value"] += 1
+        raise OSError("timeout")
+
+    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    monkeypatch.setattr(
+        "backend.market._news_state",
+        {"status": "unknown", "checked_at": 0.0, "cached_items": [], "cached_at": 0.0},
+    )
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic():
+        return monotonic_value["value"]
+
+    monkeypatch.setattr("backend.market.time.monotonic", fake_monotonic)
+
+    first = fetch_authoritative_news(limit=2)
+    first_calls = call_count["value"]
+    assert first
+
+    monotonic_value["value"] = 100.0  # Still within backoff window
+    second = fetch_authoritative_news(limit=2)
+
+    assert call_count["value"] == first_calls
+    assert second == first
 
 
 def test_market_endpoints(monkeypatch):

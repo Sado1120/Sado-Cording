@@ -81,6 +81,15 @@ _upbit_network_state = {
     "checked_at": 0.0,
 }
 
+_NEWS_CACHE_TTL_SECONDS = 300.0
+_NEWS_BACKOFF_SECONDS = 600.0
+_news_state = {
+    "status": "unknown",  # "up" | "down" | "unknown"
+    "checked_at": 0.0,
+    "cached_items": [],
+    "cached_at": 0.0,
+}
+
 
 _FALLBACK_MARKETS: List[MarketInfo] = [
     MarketInfo(
@@ -119,6 +128,33 @@ _FALLBACK_MARKETS: List[MarketInfo] = [
         market_warning="NONE",
         trading_suspended=False,
     ),
+]
+
+_FALLBACK_NEWS: List[Dict[str, str]] = [
+    {
+        "title": "IMF, 디지털 자산 규제 프레임워크 제안",
+        "url": "https://www.imf.org/",  # authoritative placeholder
+        "published_at": "Fallback Digest",
+        "source": "IMF",
+    },
+    {
+        "title": "BIS, 토큰화된 증권 시장 리포트 발표",
+        "url": "https://www.bis.org/",
+        "published_at": "Fallback Digest",
+        "source": "BIS",
+    },
+    {
+        "title": "BlackRock, ETF 시장 유동성 전망 업데이트",
+        "url": "https://www.blackrock.com/",
+        "published_at": "Fallback Digest",
+        "source": "BlackRock",
+    },
+    {
+        "title": "Fidelity, 디지털 자산 리서치 하이라이트",
+        "url": "https://www.fidelity.com/",
+        "published_at": "Fallback Digest",
+        "source": "Fidelity",
+    },
 ]
 
 
@@ -300,12 +336,54 @@ def build_market_insights(
     }
 
 
-def fetch_authoritative_news(limit: int = 8) -> List[Dict[str, str]]:
-    """Return curated institutional news headlines.
+def _news_cache_valid(limit: int) -> Optional[List[Dict[str, str]]]:
+    cached = _news_state["cached_items"]
+    if not cached:
+        return None
+    if time.monotonic() - _news_state["cached_at"] > _NEWS_CACHE_TTL_SECONDS:
+        return None
+    return [dict(item) for item in cached[:limit]]
 
-    The function prefers live data from BIS/IMF/ETF issuers' RSS feeds but falls
-    back to a static institutional digest when network access is not available.
-    """
+
+def _news_backoff_active() -> bool:
+    if _news_state["status"] != "down":
+        return False
+    elapsed = time.monotonic() - _news_state["checked_at"]
+    return elapsed < _NEWS_BACKOFF_SECONDS
+
+
+def _record_news_state(*, status: str, items: Optional[List[Dict[str, str]]] = None) -> None:
+    timestamp = time.monotonic()
+    _news_state["status"] = status
+    _news_state["checked_at"] = timestamp
+    if items is not None:
+        _news_state["cached_items"] = [dict(item) for item in items]
+        _news_state["cached_at"] = timestamp
+    elif not _news_state["cached_items"]:
+        _news_state["cached_items"] = [dict(item) for item in _FALLBACK_NEWS]
+        _news_state["cached_at"] = timestamp
+
+
+def _news_from_cache_or_fallback(limit: int) -> List[Dict[str, str]]:
+    cached = _news_state["cached_items"]
+    source = cached if cached else _FALLBACK_NEWS
+    return [dict(item) for item in source[:limit]]
+
+
+def fetch_authoritative_news(limit: int = 8) -> List[Dict[str, str]]:
+    """Return curated institutional news headlines with caching and backoff."""
+
+    try:
+        limit = max(1, int(limit))
+    except (TypeError, ValueError):  # pragma: no cover - defensive guard
+        limit = 1
+
+    cached = _news_cache_valid(limit)
+    if cached is not None:
+        return cached
+
+    if _news_backoff_active():
+        return _news_from_cache_or_fallback(limit)
 
     feeds = [
         "https://www.bis.org/rss/publ/index.xml",
@@ -317,57 +395,35 @@ def fetch_authoritative_news(limit: int = 8) -> List[Dict[str, str]]:
     for feed in feeds:
         request = Request(feed, headers={"Accept": "application/rss+xml, application/xml"})
         try:
-            with urlopen(request, timeout=5) as response:  # pragma: no cover - network success
+            with urlopen(request, timeout=2.5) as response:  # pragma: no cover - network success
                 import xml.etree.ElementTree as ET
 
                 tree = ET.fromstring(response.read())
-                for item in tree.iterfind("channel/item"):
-                    title = (item.findtext("title") or "").strip()
-                    link = (item.findtext("link") or "").strip()
-                    pub_date = (item.findtext("pubDate") or "").strip()
-                    if title and link:
-                        headlines.append(
-                            {
-                                "title": title,
-                                "url": link,
-                                "published_at": pub_date,
-                                "source": feed,
-                            }
-                        )
-                    if len(headlines) >= limit:
-                        break
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):
             continue
+
+        for item in tree.iterfind("channel/item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            if not title or not link:
+                continue
+            pub_date = (item.findtext("pubDate") or "").strip()
+            headlines.append(
+                {
+                    "title": title,
+                    "url": link,
+                    "published_at": pub_date,
+                    "source": feed,
+                }
+            )
+            if len(headlines) >= limit:
+                break
         if len(headlines) >= limit:
             break
 
     if headlines:
-        return headlines[:limit]
+        _record_news_state(status="up", items=headlines)
+        return [dict(item) for item in headlines[:limit]]
 
-    fallback = [
-        {
-            "title": "IMF, 디지털 자산 규제 프레임워크 제안",
-            "url": "https://www.imf.org/",  # authoritative placeholder
-            "published_at": "Fallback Digest",
-            "source": "IMF",
-        },
-        {
-            "title": "BIS, 토큰화된 증권 시장 리포트 발표",
-            "url": "https://www.bis.org/",
-            "published_at": "Fallback Digest",
-            "source": "BIS",
-        },
-        {
-            "title": "BlackRock, ETF 시장 유동성 전망 업데이트",
-            "url": "https://www.blackrock.com/",
-            "published_at": "Fallback Digest",
-            "source": "BlackRock",
-        },
-        {
-            "title": "Fidelity, 디지털 자산 리서치 하이라이트",
-            "url": "https://www.fidelity.com/",
-            "published_at": "Fallback Digest",
-            "source": "Fidelity",
-        },
-    ]
-    return fallback[:limit]
+    _record_news_state(status="down", items=None)
+    return _news_from_cache_or_fallback(limit)
