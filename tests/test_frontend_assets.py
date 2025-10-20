@@ -49,6 +49,15 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "autopilot-next-countdown" in html, "Autopilot status block should show next cycle countdown"
 
 
+def test_dashboard_portfolio_textareas_have_defaults():
+    html = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    assert '"symbol": "BND"' in html, "Stable bucket defaults should include representative ETF"
+    assert '"symbol": "BTC"' in html, "Aggressive bucket defaults should include BTC"
+    assert '"SPY": 0.35' in html, "Target allocation textarea should pre-fill diversified weights"
+    assert '"QQQ": 1500000' in html, "Current positions textarea should surface sample holdings"
+
+
 def test_stylesheet_contains_korean_font_stack():
     css = (PROJECT_ROOT / "frontend" / "styles.css").read_text(encoding="utf-8")
 

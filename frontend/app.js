@@ -653,6 +653,74 @@ const copilotLogEl = document.getElementById("copilot-log");
 const diagnosticsListEl = document.getElementById("diagnostics-list");
 const diagnosticsRefreshBtn = document.getElementById("diagnostics-refresh");
 const backToTopBtn = document.getElementById("back-to-top");
+const blueprintStableInput = document.getElementById("blueprint-stable");
+const blueprintAggressiveInput = document.getElementById("blueprint-aggressive");
+const currentPositionsInput = document.getElementById("current-positions");
+const targetAllocationsInput = document.getElementById("target-allocations");
+
+const DEFAULT_BLUEPRINT_STABLE = [
+  {
+    symbol: "BND",
+    weight: 0.55,
+    expected_return_pct: 4.2,
+    expected_volatility_pct: 5.5,
+  },
+  {
+    symbol: "JEPI",
+    weight: 0.45,
+    expected_return_pct: 6.1,
+    expected_volatility_pct: 7.0,
+  },
+];
+
+const DEFAULT_BLUEPRINT_AGGRESSIVE = [
+  {
+    symbol: "BTC",
+    weight: 0.5,
+    expected_return_pct: 32,
+    expected_volatility_pct: 60,
+  },
+  {
+    symbol: "ETH",
+    weight: 0.3,
+    expected_return_pct: 26,
+    expected_volatility_pct: 52,
+  },
+  {
+    symbol: "SOL",
+    weight: 0.2,
+    expected_return_pct: 42,
+    expected_volatility_pct: 78,
+  },
+];
+
+const DEFAULT_PORTFOLIO_POSITIONS = {
+  SPY: 2_500_000,
+  QQQ: 1_500_000,
+  BTC: 1_200_000,
+};
+
+const DEFAULT_TARGET_ALLOCATIONS = {
+  SPY: 0.35,
+  QQQ: 0.25,
+  BTC: 0.25,
+  ETH: 0.15,
+};
+
+const ensureTextareaDefaults = (element, defaultValue) => {
+  if (!element) return;
+  const existing = element.value.trim();
+  if (!existing) {
+    element.value = typeof defaultValue === "string" ? defaultValue : JSON.stringify(defaultValue, null, 2);
+  } else {
+    element.value = existing;
+  }
+};
+
+ensureTextareaDefaults(blueprintStableInput, DEFAULT_BLUEPRINT_STABLE);
+ensureTextareaDefaults(blueprintAggressiveInput, DEFAULT_BLUEPRINT_AGGRESSIVE);
+ensureTextareaDefaults(currentPositionsInput, DEFAULT_PORTFOLIO_POSITIONS);
+ensureTextareaDefaults(targetAllocationsInput, DEFAULT_TARGET_ALLOCATIONS);
 
 if (copilotQuestionInput && !copilotQuestionInput.value) {
   copilotQuestionInput.value = "지금 시장 전략을 요약해줘";
@@ -2759,7 +2827,21 @@ async function handleSyntheticData() {
   const seed = Math.floor(Math.random() * 10_000);
   try {
     const data = await requestApi(`/prices/synthetic?seed=${seed}`);
-    alert(`랜덤 시세 ${data.length}건이 생성되었습니다. 전략 파라미터의 시드를 ${seed}로 설정해보세요!`);
+    if (!Array.isArray(data) || !data.length) {
+      alert("샘플 시세 생성에 실패했습니다. 다시 시도해주세요.");
+      return;
+    }
+
+    const closes = data.map((item) => Number(item.close) || 0);
+    lastSimulationContext = {
+      market: "SYNTHETIC",
+      interval: `${data.length} 샘플`,
+      useLiveData: false,
+    };
+    renderEquityCurve(closes);
+    alert(
+      `샘플 시세 ${data.length}건을 불러왔습니다. 전략 파라미터에서 랜덤 시드를 ${seed}로 설정해 곡선 반응을 비교해보세요.`,
+    );
   } catch (error) {
     alert(error.message);
   }

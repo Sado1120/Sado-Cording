@@ -1098,22 +1098,49 @@
               <h3>안정 자산 (미국 ETF)</h3>
               <textarea
                 id="blueprint-stable"
-                placeholder='[
-  {"symbol": "BND", "weight": 0.6, "expected_return_pct": 4.2, "expected_volatility_pct": 5.5},
-  {"symbol": "JEPI", "weight": 0.4, "expected_return_pct": 6.1, "expected_volatility_pct": 7.0}
-]'
-              ></textarea>
+                spellcheck="false"
+                placeholder="안정 자산 JSON 배열을 입력하세요."
+              >[
+  {
+    "symbol": "BND",
+    "weight": 0.55,
+    "expected_return_pct": 4.2,
+    "expected_volatility_pct": 5.5
+  },
+  {
+    "symbol": "JEPI",
+    "weight": 0.45,
+    "expected_return_pct": 6.1,
+    "expected_volatility_pct": 7.0
+  }
+]</textarea>
             </div>
             <div>
               <h3>공격 자산 (디지털 자산)</h3>
-              <textarea
-                id="blueprint-aggressive"
-                placeholder='[
-  {"symbol": "BTC", "weight": 0.5, "expected_return_pct": 35, "expected_volatility_pct": 65},
-  {"symbol": "ETH", "weight": 0.3, "expected_return_pct": 28, "expected_volatility_pct": 55},
-  {"symbol": "SOL", "weight": 0.2, "expected_return_pct": 45, "expected_volatility_pct": 80}
-]'
-              ></textarea>
+                <textarea
+                  id="blueprint-aggressive"
+                  spellcheck="false"
+                  placeholder="공격 자산 JSON 배열을 입력하세요."
+                >[
+  {
+    "symbol": "BTC",
+    "weight": 0.5,
+    "expected_return_pct": 32,
+    "expected_volatility_pct": 60
+  },
+  {
+    "symbol": "ETH",
+    "weight": 0.3,
+    "expected_return_pct": 26,
+    "expected_volatility_pct": 52
+  },
+  {
+    "symbol": "SOL",
+    "weight": 0.2,
+    "expected_return_pct": 42,
+    "expected_volatility_pct": 78
+  }
+]</textarea>
             </div>
           </div>
         </form>
@@ -1128,11 +1155,28 @@
         <div class="portfolio-grid">
           <div>
             <h3>현재 포지션 (KRW)</h3>
-            <textarea id="current-positions" placeholder='{"SPY": 2500000, "QQQ": 1500000, "BTC": 1200000}'></textarea>
+            <textarea
+              id="current-positions"
+              spellcheck="false"
+              placeholder="현재 보유 자산 JSON을 입력하세요."
+            >{
+  "SPY": 2500000,
+  "QQQ": 1500000,
+  "BTC": 1200000
+}</textarea>
           </div>
           <div>
             <h3>목표 비중</h3>
-            <textarea id="target-allocations" placeholder='{"SPY": 0.35, "QQQ": 0.25, "BTC": 0.25, "ETH": 0.15}'></textarea>
+            <textarea
+              id="target-allocations"
+              spellcheck="false"
+              placeholder="목표 비중 JSON을 입력하세요."
+            >{
+  "SPY": 0.35,
+  "QQQ": 0.25,
+  "BTC": 0.25,
+  "ETH": 0.15
+}</textarea>
           </div>
         </div>
         <div class="portfolio-actions">

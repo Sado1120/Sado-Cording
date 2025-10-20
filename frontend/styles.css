@@ -1809,6 +1809,19 @@ textarea:focus {
   box-shadow: 0 0 0 2px rgba(122, 225, 255, 0.2);
 }
 
+.panel--blueprint textarea,
+.panel--portfolio textarea {
+  font-family: "Fira Code", "JetBrains Mono", "D2Coding", "Noto Sans KR", monospace;
+  line-height: 1.45;
+  min-height: 200px;
+  white-space: pre;
+}
+
+.panel--blueprint textarea::placeholder,
+.panel--portfolio textarea::placeholder {
+  font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
 .blueprint-form {
   display: flex;
   flex-direction: column;
