@@ -156,6 +156,8 @@ class AutoTrader:
                 last_cycle_completed_at=self._state.last_cycle_completed_at,
                 logs=list(self._state.logs),
                 next_cycle_due_at=self._state.next_cycle_due_at,
+                last_recommendations=list(self._state.last_recommendations),
+                last_recommendation_source=self._state.last_recommendation_source,
             )
         return snapshot
 
