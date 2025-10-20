@@ -206,14 +206,25 @@ Synology 컨테이너 매니저에 복사할 때는 "Git 적용 복사"로 전�
 - 각 추천 카드에는 신뢰도, 추세 강도, 변동성, 기관 센티먼트, 돌파 확률, 최근 가격 변동과 종가가 함께 표시되어 가상/실거래 전략에 바로 활용할 수 있습니다.
 - API를 직접 호출하려면 `GET /market/recommendations?base=ALL&interval=minute15&limit=5`처럼 기준 통화와 캔들 주기를 지정하면 되며, 응답에는 분석 소스(upbit/synthetic/mixed)와 에러 로그가 함께 포함됩니다.
 
-### Synology Chat 웹훅 검증
+### Synology Chat 웹훅 설정·검증
 
-- 환경 변수에 `SADO_CHAT_WEBHOOK` 또는 `SYNOLOGY_CHAT_WEBHOOK`을 설정하면 백엔드와 오토파일럿이 체결/오류 메시지를 자동 전송합니다.
-- 대시보드 상단 "Synology Chat 웹훅 테스트" 카드에서 테스트 문구를 입력하고 `테스트 전송`을 누르면 `/notifications/chat` API가 호출되며 성공/실패가 배지로 표시됩니다.
-- 같은 카드의 상태 문구는 `/notifications/chat/status` 응답을 반영하여 최근 전송 메시지, 성공 시각, 오류 원인을 보여주므로 Synology Chat 연결이 정상인지 실시간으로 확인할 수 있습니다.
-- 테스트가 실패할 경우 8501 우측 상단 API 엔드포인트 입력창에서 백엔드 주소가 올바른지 확인한 뒤 다시 시도하세요.
-- 서버 쉘에서는 `python -m backend.notifications --status` 명령으로 환경 변수 구성 여부와 최근 전송 기록을 확인하거나, `python -m backend.notifications "Synology Chat 웹훅 테스트"`로 직접 메시지를 발송하여 채널에서 수신 여부를 검증할 수 있습니다.
-- `.env`에 웹훅을 입력할 때 따옴표(`""`, `'`)나 `%22` 인코딩이 포함되어 있어도 백엔드가 자동으로 정리하지만, 가능하면 순수 URL만 입력하면 추후 복사·검증이 더욱 간단해집니다.
+1. **Synology Chat에서 웹훅 생성**
+   - Synology Chat 관리자 계정으로 로그인한 뒤, 우측 상단의 **⚙️ 관리(Administration)** → **Integrations** → **Incoming Webhook** → **생성(Create)** 를 선택합니다.
+   - 알림을 받을 **채널** 또는 **사용자**를 지정하고, 필요 시 권한을 `모두(All)`로 설정한 뒤 저장합니다.
+   - 생성이 완료되면 "Webhook URL"이 표시되며, 복사한 주소를 `.env`에 입력하면 됩니다.
+2. **환경 변수에 등록**
+   - `.env`에 `SADO_CHAT_WEBHOOK=https://...` 형식으로 붙여넣습니다. 백엔드는 `"`(따옴표)나 `%22`가 섞여 있어도 정규화하지만, 가능한 순수 URL을 사용하는 것이 좋습니다.
+   - Synology Chat이 프록시 뒤에 있거나 인증이 필요한 경우, 시놀로지 DSM에서 외부 접근 허용과 포트 포워딩이 열려 있는지도 확인합니다.
+3. **대시보드에서 즉시 테스트**
+   - 8501 대시보드 상단 "Synology Chat 웹훅 테스트" 카드에서 메시지를 입력하고 `테스트 전송`을 누르면 `/notifications/chat` API를 통해 성공/실패 여부를 바로 확인할 수 있습니다.
+   - 카드 하단 상태 문구는 `/notifications/chat/status` 값을 표시하며, 마지막 성공 시각·오류 메시지를 함께 보여줍니다.
+4. **CLI로 이중 검증**
+   - 서버 쉘에서는 `python -m backend.notifications --status`로 환경 변수 로딩과 최근 전송 기록을 확인할 수 있습니다.
+   - `python -m backend.notifications "Synology Chat 웹훅 테스트"` 명령을 실행하면 동일한 메시지를 채널로 발송해 실제 수신 여부를 검증할 수 있습니다.
+5. **연동 실패 시 점검 사항**
+   - 8501 대시보드 우측 상단 API 엔드포인트가 현재 백엔드를 가리키는지 확인하세요.
+   - Synology Chat에서 봇이 채널에 초대되어 있는지, 관리 메뉴에서 해당 통합이 활성 상태인지 재확인합니다.
+   - 방화벽·포트 포워딩·HTTPS 인증서 문제로 외부에서 NAS가 접근되지 않는 경우 DSM에서 네트워크 설정을 점검합니다.
 
 ### AI 코파일럿 활용 가이드
 
