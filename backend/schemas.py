@@ -546,6 +546,11 @@ class AutoPilotConfigRequest(BaseModel):
     include_portfolio: bool = True
     max_position_pct: float = Field(0.25, ge=0.01, le=1.0)
     min_confidence_pct: float = Field(55.0, ge=0.0, le=100.0)
+    auto_select_market: bool = False
+    recommendation_base: str = Field("KRW", min_length=2)
+    recommendation_interval: str = Field("minute60")
+    recommendation_max_markets: int = Field(40, ge=5, le=120)
+    recommendation_include_warnings: bool = False
 
 
 class AutoPilotLogEntryPayload(BaseModel):
@@ -575,6 +580,11 @@ class AutoPilotConfigPayload(BaseModel):
     include_portfolio: bool
     max_position_pct: float
     min_confidence_pct: float
+    auto_select_market: bool
+    recommendation_base: str
+    recommendation_interval: str
+    recommendation_max_markets: int
+    recommendation_include_warnings: bool
 
 
 class AutoPilotStatusResponse(BaseModel):
@@ -587,6 +597,8 @@ class AutoPilotStatusResponse(BaseModel):
     last_cycle_completed_at: Optional[datetime]
     next_cycle_due_at: Optional[datetime]
     logs: List[AutoPilotLogEntryPayload]
+    recent_recommendations: List[str] = Field(default_factory=list)
+    recommendation_source: Optional[str] = None
 
 
 class DiagnosticCheckPayload(BaseModel):

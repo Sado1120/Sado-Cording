@@ -214,6 +214,11 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
             include_portfolio=state.config.include_portfolio,
             max_position_pct=_safe_number(state.config.max_position_pct, lower=0.0, upper=1.0),
             min_confidence_pct=_safe_number(state.config.min_confidence_pct, lower=0.0, upper=100.0),
+            auto_select_market=state.config.auto_select_market,
+            recommendation_base=state.config.recommendation_base,
+            recommendation_interval=state.config.recommendation_interval,
+            recommendation_max_markets=int(state.config.recommendation_max_markets),
+            recommendation_include_warnings=state.config.recommendation_include_warnings,
         )
 
     execution_payload = None
@@ -243,6 +248,8 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
         last_cycle_completed_at=state.last_cycle_completed_at,
         next_cycle_due_at=state.next_cycle_due_at,
         logs=logs,
+        recent_recommendations=list(state.last_recommendations),
+        recommendation_source=state.last_recommendation_source,
     )
 
 
@@ -257,6 +264,11 @@ def _build_autopilot_config(payload: AutoPilotConfigRequest) -> AutoTraderConfig
         include_portfolio=payload.include_portfolio,
         max_position_pct=payload.max_position_pct,
         min_confidence_pct=payload.min_confidence_pct,
+        auto_select_market=payload.auto_select_market,
+        recommendation_base=payload.recommendation_base.upper(),
+        recommendation_interval=payload.recommendation_interval,
+        recommendation_max_markets=payload.recommendation_max_markets,
+        recommendation_include_warnings=payload.recommendation_include_warnings,
     )
 
 
@@ -620,13 +632,13 @@ def _evaluate_market_candidate(
     return ("", payload, candle_data.source)
 
 
-@app.get("/market/recommendations", response_model=MarketRecommendationsResponse)
-def get_market_recommendations(
-    base: str = "KRW",
-    interval: str = "minute60",
-    limit: int = 5,
-    max_markets: int = 30,
-    include_warnings: bool = False,
+def _compute_market_recommendations(
+    *,
+    base: str,
+    interval: str,
+    limit: int,
+    max_markets: int,
+    include_warnings: bool,
 ) -> MarketRecommendationsResponse:
     start = perf_counter()
     base_currency = base.upper() or "KRW"
@@ -708,6 +720,42 @@ def get_market_recommendations(
         analysis_source=analysis_source,
         recommendations=top_recommendations,
         errors=errors,
+    )
+
+
+def _autopilot_recommendations(
+    base: str,
+    interval: str,
+    limit: int,
+    max_markets: int,
+    include_warnings: bool,
+) -> MarketRecommendationsResponse:
+    return _compute_market_recommendations(
+        base=base,
+        interval=interval,
+        limit=limit,
+        max_markets=max_markets,
+        include_warnings=include_warnings,
+    )
+
+
+_auto_trader.set_recommendation_scanner(_autopilot_recommendations)
+
+
+@app.get("/market/recommendations", response_model=MarketRecommendationsResponse)
+def get_market_recommendations(
+    base: str = "KRW",
+    interval: str = "minute60",
+    limit: int = 5,
+    max_markets: int = 30,
+    include_warnings: bool = False,
+) -> MarketRecommendationsResponse:
+    return _compute_market_recommendations(
+        base=base,
+        interval=interval,
+        limit=limit,
+        max_markets=max_markets,
+        include_warnings=include_warnings,
     )
 
 

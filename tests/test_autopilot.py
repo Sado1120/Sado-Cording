@@ -14,6 +14,7 @@ from backend.schemas import OrderMode
 from backend.trading import Candle
 
 import backend.app as app_module
+from types import SimpleNamespace
 
 
 def _make_market_data(count: int = 120) -> MarketData:
@@ -62,7 +63,10 @@ def _fake_autopilot_builder(**kwargs) -> ai.AutoPilotOrderPlan:
     )
 
 
-def _build_trader(notifier=lambda _message: True) -> tuple[AutoTrader, PaperBroker]:
+def _build_trader(
+    notifier=lambda _message: True,
+    recommendation_scanner=None,
+) -> tuple[AutoTrader, PaperBroker]:
     broker = PaperBroker()
     trader = AutoTrader(
         broker=broker,
@@ -73,6 +77,7 @@ def _build_trader(notifier=lambda _message: True) -> tuple[AutoTrader, PaperBrok
         portfolio_builder=lambda **_: None,
         time_provider=lambda: datetime.now(timezone.utc),
         notifier=notifier,
+        recommendation_scanner=recommendation_scanner,
     )
     return trader, broker
 
@@ -136,6 +141,59 @@ def test_autotrader_notifier_invoked():
         trader.stop()
 
 
+def test_autotrader_auto_select_market_switches_market():
+    class DummyRecommendations:
+        def __init__(self, markets: list[str]):
+            self.recommendations = [
+                SimpleNamespace(
+                    market=code,
+                    recommended_action="추세 추종 매수",
+                    confidence_pct=72.5,
+                    score=91.4,
+                )
+                for code in markets
+            ]
+            self.analysis_source = "synthetic"
+            self.errors: list[str] = []
+
+    def recommendation_scanner(base, interval, limit, max_markets, include_warnings):
+        assert base == "KRW"
+        assert interval == "minute60"
+        assert max_markets >= 10
+        return DummyRecommendations(["KRW-ETH", "KRW-SOL"])
+
+    trader, broker = _build_trader(recommendation_scanner=recommendation_scanner)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=25_000_000,
+        poll_interval=120.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=50.0,
+        auto_select_market=True,
+        recommendation_base="KRW",
+        recommendation_interval="minute60",
+        recommendation_max_markets=30,
+        recommendation_include_warnings=False,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.config is not None
+        assert state.config.market == "KRW-ETH"
+        assert state.last_plan is not None
+        assert state.last_plan.market == "KRW-ETH"
+        snapshot = broker.snapshot()
+        assert any(pos.market == "KRW-ETH" for pos in snapshot.positions)
+        assert state.last_recommendations, "추천 요약이 비어 있습니다."
+        assert state.last_recommendations[0].startswith("KRW-ETH")
+    finally:
+        trader.stop()
+
+
 def test_autopilot_api_endpoints(monkeypatch):
     trader, _ = _build_trader()
     original_trader = app_module._auto_trader
@@ -160,12 +218,15 @@ def test_autopilot_api_endpoints(monkeypatch):
         assert start_data["running"] is True
         assert start_data["last_plan"]["side"] == "bid"
         assert start_data["next_cycle_due_at"] is not None
+        assert start_data["config"]["auto_select_market"] is False
+        assert "recent_recommendations" in start_data
 
         status_response = client.get("/trading/autopilot/status")
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert status_data["config"]["market"] == "KRW-BTC"
         assert "next_cycle_due_at" in status_data
+        assert "recommendation_source" in status_data
 
         stop_response = client.post("/trading/autopilot/stop")
         assert stop_response.status_code == 200

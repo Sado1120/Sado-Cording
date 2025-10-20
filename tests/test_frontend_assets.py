@@ -32,6 +32,8 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "paper-heartbeat" in html, "Paper heartbeat indicator should be present in the dashboard"
     assert "copilot-form" in html, "Copilot form should be present to submit AI questions"
     assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
+    assert "autopilot-auto-market" in html, "Autopilot form should expose auto-select toggle"
+    assert "autopilot-recommendations" in html, "Autopilot status should list AI recommendations"
     assert "equity-note" in html, "Equity summary note should guide users through the chart interpretation"
     assert "window.__SADO_API_BASE__" in html, "Dashboard should expose the API base bootstrap script"
     assert "strategy-market" in html, "Strategy form should expose a market selector"

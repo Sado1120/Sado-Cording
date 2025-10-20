@@ -709,6 +709,32 @@
                   <option value="day">일봉</option>
                 </select>
               </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-auto-market" type="checkbox" checked />
+                <span>AI 추천 상위 종목 자동 선택</span>
+              </label>
+              <label class="control-field">
+                <span>추천 기준 통화</span>
+                <select id="autopilot-base">
+                  <option value="KRW" selected>KRW 마켓</option>
+                  <option value="USDT">USDT 마켓</option>
+                  <option value="BTC">BTC 마켓</option>
+                  <option value="ALL">전체 마켓</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>추천 주기</span>
+                <select id="autopilot-recommendation-interval">
+                  <option value="minute15">15분</option>
+                  <option value="minute60" selected>60분</option>
+                  <option value="minute240">4시간</option>
+                  <option value="day">일봉</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>분석 대상 수 (최대)</span>
+                <input id="autopilot-max-markets" type="number" value="40" min="10" max="120" step="5" />
+              </label>
               <label class="control-field">
                 <span>리스크 성향</span>
                 <input id="autopilot-risk" type="range" min="0" max="1" step="0.05" value="0.6" />
@@ -733,6 +759,10 @@
               <label class="control-field autopilot-toggle">
                 <input id="autopilot-include-portfolio" type="checkbox" checked />
                 <span>포트폴리오 재조정 참고</span>
+              </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-include-warnings" type="checkbox" />
+                <span>주의 종목 포함</span>
               </label>
             </div>
             <div class="autopilot-form__actions">
@@ -766,6 +796,13 @@
               <h3>오토파일럿 로그</h3>
               <ul id="autopilot-log" class="autopilot-log">
                 <li class="autopilot-log__placeholder">로그가 준비 중입니다.</li>
+              </ul>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>AI 추천 종목</h3>
+              <p id="autopilot-recommendation-source" class="autopilot-note muted">분석 출처: -</p>
+              <ul id="autopilot-recommendations" class="autopilot-log autopilot-log--compact">
+                <li class="autopilot-log__placeholder">추천 정보가 없습니다.</li>
               </ul>
             </div>
             <p id="autopilot-last-error" class="autopilot-error"></p>

@@ -633,6 +633,12 @@ const autopilotForm = document.getElementById("autopilot-form");
 const autopilotModeSelect = document.getElementById("autopilot-mode");
 const autopilotMarketInput = document.getElementById("autopilot-market");
 const autopilotIntervalSelect = document.getElementById("autopilot-interval");
+const autopilotAutoMarketInput = document.getElementById("autopilot-auto-market");
+const autopilotBaseSelect = document.getElementById("autopilot-base");
+const autopilotRecommendationIntervalSelect = document.getElementById(
+  "autopilot-recommendation-interval",
+);
+const autopilotMaxMarketsInput = document.getElementById("autopilot-max-markets");
 const autopilotRiskInput = document.getElementById("autopilot-risk");
 const autopilotRiskLabel = document.getElementById("autopilot-risk-label");
 const autopilotCapitalInput = document.getElementById("autopilot-capital");
@@ -640,6 +646,7 @@ const autopilotPollInput = document.getElementById("autopilot-poll");
 const autopilotMaxPositionInput = document.getElementById("autopilot-max-position");
 const autopilotConfidenceInput = document.getElementById("autopilot-confidence");
 const autopilotIncludePortfolioInput = document.getElementById("autopilot-include-portfolio");
+const autopilotIncludeWarningsInput = document.getElementById("autopilot-include-warnings");
 const autopilotStateEl = document.getElementById("autopilot-state");
 const autopilotLastRunEl = document.getElementById("autopilot-last-run");
 const autopilotLastCompletedEl = document.getElementById("autopilot-last-completed");
@@ -649,6 +656,8 @@ const autopilotLogList = document.getElementById("autopilot-log");
 const autopilotStartBtn = document.getElementById("autopilot-start");
 const autopilotStopBtn = document.getElementById("autopilot-stop");
 const autopilotNextCountdownEl = document.getElementById("autopilot-next-countdown");
+const autopilotRecommendationsList = document.getElementById("autopilot-recommendations");
+const autopilotRecommendationSourceEl = document.getElementById("autopilot-recommendation-source");
 const copilotLogEl = document.getElementById("copilot-log");
 const diagnosticsListEl = document.getElementById("diagnostics-list");
 const diagnosticsRefreshBtn = document.getElementById("diagnostics-refresh");
@@ -1781,6 +1790,9 @@ const renderAutopilotStatus = (status) => {
     if (status?.config?.interval) {
       noteParts.push(describeInterval(status.config.interval));
     }
+    if (Array.isArray(status?.recent_recommendations) && status.recent_recommendations.length) {
+      noteParts.push(`추천 ${status.recent_recommendations[0]}`);
+    }
     if (status?.last_cycle_started_at) {
       noteParts.push(`최근 ${formatRelativeTime(new Date(status.last_cycle_started_at))}`);
     } else if (status?.last_error) {
@@ -1802,6 +1814,19 @@ const renderAutopilotStatus = (status) => {
     if (autopilotModeSelect) autopilotModeSelect.value = status.config.mode;
     if (autopilotMarketInput) autopilotMarketInput.value = status.config.market;
     if (autopilotIntervalSelect) autopilotIntervalSelect.value = status.config.interval;
+    if (autopilotRecommendationIntervalSelect)
+      autopilotRecommendationIntervalSelect.value =
+        status.config.recommendation_interval || status.config.interval;
+    if (autopilotAutoMarketInput)
+      autopilotAutoMarketInput.checked = Boolean(status.config.auto_select_market);
+    if (autopilotBaseSelect && status.config.recommendation_base)
+      autopilotBaseSelect.value = status.config.recommendation_base;
+    if (autopilotMaxMarketsInput && status.config.recommendation_max_markets)
+      autopilotMaxMarketsInput.value = status.config.recommendation_max_markets;
+    if (autopilotIncludeWarningsInput)
+      autopilotIncludeWarningsInput.checked = Boolean(
+        status.config.recommendation_include_warnings,
+      );
     if (autopilotRiskInput) {
       autopilotRiskInput.value = status.config.risk_appetite;
       updateAutopilotRiskLabel(status.config.risk_appetite);
@@ -1833,6 +1858,22 @@ const renderAutopilotStatus = (status) => {
   renderAutopilotLogs(status?.logs || []);
   if (status?.last_plan) {
     renderAutopilotPlan(status.last_plan);
+  }
+  if (autopilotRecommendationsList) {
+    renderList(
+      autopilotRecommendationsList,
+      status?.recent_recommendations,
+      "AI 추천이 아직 없습니다.",
+    );
+  }
+  if (autopilotRecommendationSourceEl) {
+    if (status?.recommendation_source) {
+      autopilotRecommendationSourceEl.textContent = `분석 출처: ${status.recommendation_source}`;
+      autopilotRecommendationSourceEl.classList.remove("muted");
+    } else {
+      autopilotRecommendationSourceEl.textContent = "분석 출처: -";
+      autopilotRecommendationSourceEl.classList.add("muted");
+    }
   }
 };
 
@@ -1902,6 +1943,14 @@ const handleAutopilotStart = async (event) => {
     max_position_pct: Number(autopilotMaxPositionInput?.value || 0.25),
     min_confidence_pct: Number(autopilotConfidenceInput?.value || 60),
     include_portfolio: Boolean(autopilotIncludePortfolioInput?.checked),
+    auto_select_market: Boolean(autopilotAutoMarketInput?.checked),
+    recommendation_base: (autopilotBaseSelect?.value || "KRW").toUpperCase(),
+    recommendation_interval:
+      autopilotRecommendationIntervalSelect?.value ||
+      autopilotIntervalSelect?.value ||
+      "minute60",
+    recommendation_max_markets: Number(autopilotMaxMarketsInput?.value || 40),
+    recommendation_include_warnings: Boolean(autopilotIncludeWarningsInput?.checked),
   };
 
   if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = "";

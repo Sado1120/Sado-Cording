@@ -8,9 +8,14 @@ from typing import Callable, Iterable, List, Optional
 
 from . import ai
 from .execution import ExecutionError, PaperBroker, create_upbit_client_from_env
-from .market import MarketData, MarketDataError, fetch_authoritative_news, fetch_upbit_candles
+from .market import (
+    MarketData,
+    MarketDataError,
+    fetch_authoritative_news,
+    fetch_upbit_candles,
+)
 from .notifications import notify_synology_chat
-from .schemas import OrderMode
+from .schemas import MarketRecommendationsResponse, OrderMode
 from .trading import Candle
 
 
@@ -27,6 +32,11 @@ class AutoTraderConfig:
     include_portfolio: bool = True
     max_position_pct: float = 0.25
     min_confidence_pct: float = 55.0
+    auto_select_market: bool = False
+    recommendation_base: str = "KRW"
+    recommendation_interval: str = "minute60"
+    recommendation_max_markets: int = 40
+    recommendation_include_warnings: bool = False
 
 
 @dataclass
@@ -60,6 +70,8 @@ class AutoTraderState:
     last_cycle_completed_at: Optional[datetime] = None
     logs: List[AutoTraderLogEntry] = field(default_factory=list)
     next_cycle_due_at: Optional[datetime] = None
+    last_recommendations: List[str] = field(default_factory=list)
+    last_recommendation_source: Optional[str] = None
 
 
 class AutoTrader:
@@ -76,6 +88,9 @@ class AutoTrader:
         portfolio_builder: Callable[..., ai.PortfolioAIPlan] = ai.optimise_portfolio,
         time_provider: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         notifier: Optional[Callable[[str], bool]] = notify_synology_chat,
+        recommendation_scanner: Optional[
+            Callable[[str, str, int, int, bool], MarketRecommendationsResponse]
+        ] = None,
     ) -> None:
         self._broker = broker
         self._candle_fetcher = candle_fetcher
@@ -85,6 +100,7 @@ class AutoTrader:
         self._portfolio_builder = portfolio_builder
         self._time_provider = time_provider
         self._notifier = notifier
+        self._recommendation_scanner = recommendation_scanner
 
         self._config: Optional[AutoTraderConfig] = None
         self._state = AutoTraderState()
@@ -100,6 +116,8 @@ class AutoTrader:
         """Apply configuration, execute an immediate cycle, and spawn the loop."""
 
         with self._lock:
+            config.market = config.market.upper()
+            config.recommendation_base = (config.recommendation_base or "KRW").upper()
             self._config = config
             self._state.config = config
             self._state.running = True
@@ -195,9 +213,11 @@ class AutoTrader:
                 return
             self._state.last_cycle_started_at = self._time_provider()
 
+        market_code = self._resolve_market(config)
+
         try:
             market_data = self._candle_fetcher(
-                market=config.market,
+                market=market_code,
                 interval=config.interval,
                 count=200,
             )
@@ -209,7 +229,7 @@ class AutoTrader:
             news = self._safe_news()
             insight = self._analyse_market(
                 candles,
-                market=config.market,
+                market=market_code,
                 interval=config.interval,
                 news=news,
             )
@@ -221,7 +241,7 @@ class AutoTrader:
                         risk_appetite=config.risk_appetite,
                         capital=config.capital,
                         include_cash=True,
-                        preferred_markets=[config.market],
+                        preferred_markets=[market_code],
                         candle_fetcher=self._candle_fetcher,
                     )
                 except Exception as exc:  # pragma: no cover - optional enhancement
@@ -371,6 +391,106 @@ class AutoTrader:
             executed_at=self._time_provider(),
             detail="페이퍼 계좌 자동매도",
         )
+
+    def set_recommendation_scanner(
+        self,
+        scanner: Optional[Callable[[str, str, int, int, bool], MarketRecommendationsResponse]],
+    ) -> None:
+        """Configure the callable used to fetch AI market recommendations."""
+
+        with self._lock:
+            self._recommendation_scanner = scanner
+
+    # ------------------------------------------------------------------
+    # Recommendation support
+    # ------------------------------------------------------------------
+    def _resolve_market(self, config: AutoTraderConfig) -> str:
+        market_code = (config.market or "KRW-BTC").upper()
+        recommendations: List[str] = []
+        source: Optional[str] = None
+
+        if not config.auto_select_market or not self._recommendation_scanner:
+            with self._lock:
+                self._state.last_recommendations = recommendations
+                self._state.last_recommendation_source = source
+            return market_code
+
+        scan_limit = max(5, min(int(config.recommendation_max_markets or 40), 120))
+
+        try:
+            result = self._recommendation_scanner(
+                (config.recommendation_base or "KRW").upper(),
+                config.recommendation_interval or config.interval,
+                5,
+                scan_limit,
+                bool(config.recommendation_include_warnings),
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self._append_log("warning", f"추천 종목 분석 실패: {exc}")
+            with self._lock:
+                self._state.last_recommendations = []
+                self._state.last_recommendation_source = None
+            return market_code
+
+        top_market = market_code
+        try:
+            recs = getattr(result, "recommendations", []) or []
+        except Exception:  # pragma: no cover - unexpected payload shape
+            recs = []
+
+        formatted: List[str] = []
+        for entry in recs:
+            market_name = getattr(entry, "market", None)
+            if not market_name:
+                continue
+            market_name = str(market_name).upper()
+            label_parts = [market_name]
+            action = getattr(entry, "recommended_action", "")
+            if action:
+                label_parts.append(str(action))
+            confidence = getattr(entry, "confidence_pct", None)
+            try:
+                if confidence is not None:
+                    label_parts.append(f"신뢰도 {float(confidence):.1f}%")
+            except (TypeError, ValueError):
+                pass
+            score = getattr(entry, "score", None)
+            try:
+                if score is not None:
+                    label_parts.append(f"점수 {float(score):.1f}")
+            except (TypeError, ValueError):
+                pass
+            formatted.append(" · ".join(label_parts))
+            if formatted and top_market == market_code:
+                top_market = market_name
+
+        try:
+            source = getattr(result, "analysis_source", None)
+        except Exception:  # pragma: no cover - unexpected payload shape
+            source = None
+
+        try:
+            errors = getattr(result, "errors", []) or []
+        except Exception:  # pragma: no cover
+            errors = []
+
+        if errors:
+            for message in errors[:3]:
+                self._append_log("warning", f"추천 분석 경고: {message}")
+
+        if top_market != market_code:
+            self._append_log("info", f"AI 추천 종목으로 전환: {top_market}")
+            market_code = top_market
+            with self._lock:
+                if self._config:
+                    self._config.market = top_market
+                    self._state.config = self._config
+
+        with self._lock:
+            self._state.last_recommendations = formatted[:5]
+            self._state.last_recommendation_source = source
+
+        return market_code
 
     def _execute_live(
         self,
