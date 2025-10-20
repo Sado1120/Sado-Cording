@@ -1004,6 +1004,24 @@ def _paper_status_response(*, market: Optional[str] = None, interval: str = "min
 
     snapshot = _paper_broker.snapshot()
     balance = _serialize_balance(snapshot)
+
+    if target_market:
+        has_price = _paper_broker.get_last_price(target_market) is not None
+        if not has_price:
+            initial_source = _refresh_paper_market(market=target_market, interval=target_interval)
+            if initial_source in {"upbit", "synthetic"}:
+                price_source = initial_source
+            snapshot = _paper_broker.snapshot()
+            balance = _serialize_balance(snapshot)
+
+        age_seconds = max(0.0, (datetime.utcnow() - balance.last_updated).total_seconds())
+        if age_seconds > 120:
+            refreshed_source = _refresh_paper_market(market=target_market, interval=target_interval)
+            if refreshed_source in {"upbit", "synthetic"}:
+                price_source = refreshed_source
+            snapshot = _paper_broker.snapshot()
+            balance = _serialize_balance(snapshot)
+
     payload = balance.dict()
     heartbeat_state, heartbeat_reason = _paper_heartbeat(price_source, balance.last_updated)
     payload.update(

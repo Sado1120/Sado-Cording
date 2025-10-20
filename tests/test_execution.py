@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -121,6 +121,42 @@ def test_get_paper_status_refreshes_market(monkeypatch):
     assert second.interval == "minute15"
     assert first.heartbeat_state in {"online", "warning", "offline"}
     assert second.heartbeat_state in {"online", "warning", "offline"}
+
+
+def test_get_paper_status_auto_refreshes_stale_snapshot(monkeypatch):
+    broker = reset_global_broker()
+    broker.last_update = datetime.utcnow() - timedelta(hours=8)
+    broker.last_prices.clear()
+
+    class DummyData:
+        def __init__(self, price: float):
+            self.candles = [
+                trading.Candle(
+                    timestamp=datetime.utcnow(),
+                    open=price,
+                    high=price,
+                    low=price,
+                    close=price,
+                    volume=1.0,
+                )
+            ]
+            self.source = "upbit"
+
+    calls = {"count": 0}
+
+    def fake_fetch(*, market: str, interval: str, count: int):  # noqa: ARG001
+        calls["count"] += 1
+        return DummyData(price=32_000_000)
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    status = get_paper_status()
+
+    assert calls["count"] >= 1
+    assert status.price_source == "upbit"
+    assert status.last_updated >= datetime.utcnow() - timedelta(minutes=1)
+    assert status.heartbeat_state in {"online", "warning"}
+    assert status.heartbeat_reason in {"live", "delayed"}
 
 
 def test_market_orders_use_marked_price_and_hide_empty_positions():
