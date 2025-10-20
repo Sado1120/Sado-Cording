@@ -1,5 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
+from fastapi import HTTPException
+
 from backend import notifications
 from backend.app import post_chat_notification
 from backend.schemas import ChatNotificationRequest
@@ -90,3 +94,19 @@ def test_chat_status_without_webhook(monkeypatch):
 
     status = notifications.get_synology_chat_status()
     assert status["configured"] is False
+
+
+def test_chat_notification_failure_returns_detail(monkeypatch):
+    reset_chat_state()
+
+    def fake_notify(message: str, **_kwargs):  # noqa: ARG001
+        notifications._record_attempt(success=False, message="msg", error="timeout")  # type: ignore[attr-defined]
+        return False
+
+    monkeypatch.setattr(notifications, "notify_synology_chat", fake_notify)
+
+    with pytest.raises(HTTPException) as exc:
+        post_chat_notification(ChatNotificationRequest(message="메시지"))
+
+    assert exc.value.status_code == 502
+    assert "timeout" in exc.value.detail

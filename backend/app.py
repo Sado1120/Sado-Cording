@@ -352,12 +352,15 @@ def stop_autopilot() -> AutoPilotStatusResponse:
 @app.post("/notifications/chat")
 def post_chat_notification(payload: ChatNotificationRequest) -> dict:
     sent = notifications.notify_synology_chat(payload.message)
+    status = notifications.get_synology_chat_status()
     if not sent:
-        raise HTTPException(
-            status_code=502,
-            detail="Synology Chat 웹훅이 설정되지 않았거나 전송에 실패했습니다.",
-        )
-    return {"status": "sent"}
+        detail = status.get("last_error") or "Synology Chat 웹훅 전송이 실패했습니다."
+        raise HTTPException(status_code=502, detail=detail)
+    return {
+        "status": "sent",
+        "last_attempt_at": status.get("last_attempt_at"),
+        "last_success_at": status.get("last_success_at"),
+    }
 
 
 @app.get("/notifications/chat/status", response_model=ChatNotificationStatus)
@@ -1182,16 +1185,37 @@ def submit_order(payload: OrderRequest) -> OrderResponse:
                     )
                 except MarketDataError:
                     pass
-        try:
-            snapshot = _paper_broker.submit_order(
-                market=market_code,
-                side=payload.side,
-                price=payload.price,
-                volume=payload.volume,
-                ord_type=payload.ord_type,
-            )
-        except ExecutionError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        attempts = 0
+        max_attempts = 2 if needs_price_refresh or payload.ord_type == "market" else 1
+        last_error: ExecutionError | None = None
+
+        while attempts < max_attempts:
+            try:
+                snapshot = _paper_broker.submit_order(
+                    market=market_code,
+                    side=payload.side,
+                    price=payload.price,
+                    volume=payload.volume,
+                    ord_type=payload.ord_type,
+                )
+                break
+            except ExecutionError as exc:
+                last_error = exc
+                attempts += 1
+                if attempts >= max_attempts:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+                try:
+                    _refresh_paper_market(
+                        market=market_code,
+                        interval=_paper_interval_preference or "minute1",
+                    )
+                except MarketDataError:
+                    pass
+        else:  # pragma: no cover - defensive guard
+            assert last_error is not None
+            raise HTTPException(status_code=400, detail=str(last_error)) from last_error
         balance = _serialize_balance(snapshot)
         latest_order = balance.orders[0] if balance.orders else None
         return OrderResponse(

@@ -1,9 +1,8 @@
 from datetime import datetime
 
 import pytest
-from datetime import datetime
 
-import pytest
+import backend.app as app_module
 
 from backend import trading
 from backend.app import (
@@ -185,6 +184,46 @@ def test_submit_market_order_without_price_triggers_refresh(monkeypatch):
     assert response.balance.positions
     assert response.balance.positions[0].market == "KRW-ETH"
     assert response.balance.positions[0].volume == pytest.approx(0.1)
+
+
+def test_submit_order_retries_after_execution_error(monkeypatch):
+    reset_paper(PaperResetRequest(initial_cash=5_000_000))
+
+    broker = app_module._paper_broker
+    original_submit = broker.submit_order
+    submit_calls = {"count": 0}
+
+    def flaky_submit(**kwargs):
+        submit_calls["count"] += 1
+        if submit_calls["count"] == 1:
+            raise ExecutionError("시장가 주문을 실행하려면 최신 시세를 먼저 동기화하세요.")
+        return original_submit(**kwargs)
+
+    monkeypatch.setattr(broker, "submit_order", flaky_submit)
+
+    refresh_calls = {"count": 0}
+    original_refresh = app_module._refresh_paper_market
+
+    def tracking_refresh(*, market, interval):
+        refresh_calls["count"] += 1
+        return original_refresh(market=market, interval=interval)
+
+    monkeypatch.setattr(app_module, "_refresh_paper_market", tracking_refresh)
+
+    response = submit_order(
+        OrderRequest(
+            mode=OrderMode.PAPER,
+            market="KRW-XRP",
+            side="bid",
+            ord_type="market",
+            price=None,
+            volume=0.2,
+        )
+    )
+
+    assert response.status == "filled"
+    assert submit_calls["count"] >= 2
+    assert refresh_calls["count"] >= 1
 
 
 def test_live_order_requires_keys(monkeypatch):
