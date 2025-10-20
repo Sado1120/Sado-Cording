@@ -840,23 +840,29 @@ def diagnostics_full() -> DiagnosticsResponse:
 
 
 def _refresh_paper_market(market: str, *, interval: str = "minute1") -> str:
-    price_source = "manual"
+    market = market.upper()
+    source = "manual"
+    candles = []
+
     try:
         market_data = fetch_upbit_candles(market=market, interval=interval, count=1)
+        candles = market_data.candles
+        source = market_data.source
     except MarketDataError:
-        return price_source
+        candles = trading.generate_synthetic_prices(days=60)
+        source = "synthetic"
 
-    if not market_data.candles:
-        return price_source
+    if not candles:
+        return "manual"
 
-    last_price = market_data.candles[-1].close
+    last_price = candles[-1].close
     try:
         _paper_broker.mark_price(market=market, price=last_price)
     except ExecutionError:
         # Heartbeat best-effort; ignore failures so the status endpoint keeps working.
-        return price_source
+        return "manual"
 
-    return market_data.source
+    return source if source in {"upbit", "synthetic"} else "manual"
 
 
 def _paper_heartbeat(price_source: str, last_updated: datetime) -> tuple[str, str]:
