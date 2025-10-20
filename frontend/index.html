@@ -42,6 +42,254 @@
     </header>
 
     <main class="dashboard">
+      <section class="panel panel--topline">
+        <header>
+          <h2>거래 성과 &amp; 추천 요약</h2>
+          <span class="panel-subtitle">수익률, 거래 내역, 추천 코인을 한 화면에서 먼저 확인하세요</span>
+        </header>
+        <div class="topline-grid">
+          <div class="topline-column topline-column--performance">
+            <article class="topline-card">
+              <div class="topline-card__header">
+                <h3>수익률 현황</h3>
+                <span class="badge">실시간</span>
+              </div>
+              <p class="muted">
+                전략 시뮬레이션과 자동매매 집계를 기반으로 최신 손익 지표를 집계합니다.
+              </p>
+              <div class="metric-grid metric-grid--topline">
+                <article class="metric-card">
+                  <span class="metric-label">총 수익률</span>
+                  <strong id="metric-total-return" class="metric-value">0.00%</strong>
+                  <span class="metric-subtext">전략 누적 성과</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">연환산 수익률</span>
+                  <strong id="metric-annual-return" class="metric-value">0.00%</strong>
+                  <span class="metric-subtext">연간 기준</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">최대 낙폭</span>
+                  <strong id="metric-drawdown" class="metric-value">0.00%</strong>
+                  <span class="metric-subtext">리스크 헬스체크</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">거래 요약</span>
+                  <div class="metric-stack">
+                    <span id="metric-trade-count">0건</span>
+                    <span id="metric-trade-winrate">승률 0.0%</span>
+                    <span id="metric-trade-avg">평균 0.0%</span>
+                    <span id="metric-trade-expectancy">기대 0.0%</span>
+                    <span id="metric-trade-median">중앙값 0.0%</span>
+                    <span id="metric-trade-winloss">승패비 0.00</span>
+                    <span id="metric-trade-payoff">페이오프 0.00</span>
+                    <span id="metric-trade-best">최대수익 0.0%</span>
+                    <span id="metric-trade-worst">최대손실 0.0%</span>
+                  </div>
+                </article>
+              </div>
+              <div class="metric-grid metric-grid--dense metric-grid--extended">
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">연간 변동성</span>
+                  <strong id="metric-volatility" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">위험 대비 포지션 진폭</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">샤프 비율</span>
+                  <strong id="metric-sharpe" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">위험 대비 수익</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">소르티노 비율</span>
+                  <strong id="metric-sortino" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">하락 리스크만 고려</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">칼마 비율</span>
+                  <strong id="metric-calmar" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">낙폭 대비 수익</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">95% VaR</span>
+                  <strong id="metric-var" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">손실 한계 추정</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">노출 시간</span>
+                  <strong id="metric-exposure" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">시장 체류 비중</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">프로핏 팩터</span>
+                  <strong id="metric-profit-factor" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">이익/손실 비율</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">기대 수익률</span>
+                  <strong id="metric-expectancy" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">거래당 기대값</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">평균 보유</span>
+                  <strong id="metric-hold" class="metric-value metric-value--compact">0.0봉</strong>
+                  <span class="metric-subtext">전략 체류 기간</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">울서 지수</span>
+                  <strong id="metric-ulcer" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">심리적 낙폭 스트레스</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">다운사이드 변동성</span>
+                  <strong id="metric-downside" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">하락 전용 표준편차</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">회복 계수</span>
+                  <strong id="metric-recovery" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">수익률 대비 낙폭</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">평균 승률</span>
+                  <strong id="metric-avg-win" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">이기는 거래 평균</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">평균 손실률</span>
+                  <strong id="metric-avg-loss" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">지는 거래 평균</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">승패 비율</span>
+                  <strong id="metric-winloss" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">리스크/리워드</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">테일 비율</span>
+                  <strong id="metric-tail" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">꼬리 위험 대비 기회</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">오메가 비율</span>
+                  <strong id="metric-omega" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">손실 대비 기회 비중</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">켈리 지수</span>
+                  <strong id="metric-kelly" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">최적 베팅 비중 가이드</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">연속 승리</span>
+                  <strong id="metric-streak-win" class="metric-value metric-value--compact">0회</strong>
+                  <span class="metric-subtext">최대 우상향 스트릭</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">연속 손실</span>
+                  <strong id="metric-streak-loss" class="metric-value metric-value--compact">0회</strong>
+                  <span class="metric-subtext">최대 연속 하락 스트릭</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">왜도</span>
+                  <strong id="metric-skewness" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">수익 분포 비대칭</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">첨도</span>
+                  <strong id="metric-kurtosis" class="metric-value metric-value--compact">0.00</strong>
+                  <span class="metric-subtext">꼬리 두께 집중도</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">평균 낙폭</span>
+                  <strong id="metric-avg-drawdown" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">낙폭 평균 깊이</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">페인 인덱스</span>
+                  <strong id="metric-pain" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">포트폴리오 고통 지수</span>
+                </article>
+                <article class="metric-card metric-card--compact">
+                  <span class="metric-label">최대 상승폭</span>
+                  <strong id="metric-runup" class="metric-value metric-value--compact">0.00%</strong>
+                  <span class="metric-subtext">트로프 대비 최고 반등</span>
+                </article>
+              </div>
+            </article>
+          </div>
+          <div class="topline-column topline-column--trades">
+            <article class="topline-card topline-card--trades">
+              <div class="topline-card__header">
+                <h3>거래 내역</h3>
+                <span class="panel-subtitle">실거래와 페이퍼 체결 로그를 통합 표시합니다.</span>
+              </div>
+              <p class="muted">
+                상단에서 최신 체결 결과를 확인하고, 페이퍼/실거래 상태 뱃지와 연동된 하트비트를 참조하세요.
+              </p>
+              <div class="table-wrapper table-wrapper--compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>진입</th>
+                      <th>청산</th>
+                      <th>진입가</th>
+                      <th>청산가</th>
+                      <th>수량</th>
+                      <th>PnL (KRW)</th>
+                      <th>수익률</th>
+                      <th>보유 봉수</th>
+                      <th>청산 사유</th>
+                    </tr>
+                  </thead>
+                  <tbody id="trade-table"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+          <div
+            class="topline-column topline-column--recommendations panel--recommendations"
+            id="recommendations-panel"
+          >
+            <article class="topline-card">
+              <div class="topline-card__header">
+                <h3>AI 추천 TOP5</h3>
+                <span class="panel-subtitle">실시간 시황을 분석해 우선 확인할 코인을 제안합니다.</span>
+              </div>
+              <div class="recommendations-toolbar">
+                <div class="recommendations-toolbar__meta">
+                  <span id="recommendations-filter" class="badge badge--ghost">필터 준비 중</span>
+                  <span id="recommendations-updated" class="muted">갱신 대기</span>
+                </div>
+                <div class="recommendations-toolbar__actions">
+                  <span id="recommendations-source" class="badge">데이터 확인 중</span>
+                  <button id="recommendations-refresh" class="btn btn--accent btn--compact" type="button">
+                    재스캔
+                  </button>
+                </div>
+              </div>
+              <ul id="recommendations-list" class="recommendations-list">
+                <li class="recommendation-card recommendation-card--placeholder">
+                  <strong>추천을 계산하는 중...</strong>
+                  <span>8501 대시보드가 업비트 전체 마켓을 분석한 뒤 TOP5를 표시합니다.</span>
+                </li>
+              </ul>
+              <div id="recommendations-errors" class="recommendations-errors"></div>
+              <div class="recommendations-footnote">
+                <h3>어떻게 선별하나요?</h3>
+                <p>
+                  AI 엔진이 EMA 추세, RSI/MACD, 변동성, 기관 센티먼트, 돌파 확률, 유동성 펄스를 함께 평가해
+                  점수화합니다. 매수 시나리오일수록 가중치를 높이고, 과도한 변동성은 자동으로 감점합니다.
+                </p>
+                <p class="muted">
+                  추천 결과는 실시간 시황, 페이퍼 계좌, 오토파일럿에 그대로 적용할 수 있으며, Synology Chat 알림과도
+                  연동됩니다.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="panel panel--system">
         <header>
           <h2>운영 상태 모니터</h2>
@@ -115,42 +363,6 @@
             </li>
           </ul>
         </div>
-      </section>
-
-      <section class="panel panel--recommendations" id="recommendations-panel">
-        <header>
-          <h2>AI 추천 TOP5</h2>
-          <span class="panel-subtitle">업비트 전 종목을 스캔해 리스크 대비 기대 수익이 높은 코인을 선별합니다</span>
-        </header>
-        <div class="recommendations-toolbar">
-          <div class="recommendations-toolbar__meta">
-            <span id="recommendations-filter" class="badge badge--ghost">필터 준비 중</span>
-            <span id="recommendations-updated" class="muted">갱신 대기</span>
-          </div>
-          <div class="recommendations-toolbar__actions">
-            <span id="recommendations-source" class="badge">데이터 확인 중</span>
-            <button id="recommendations-refresh" class="btn btn--accent btn--compact" type="button">재스캔</button>
-          </div>
-        </div>
-        <div class="recommendations-grid">
-          <ul id="recommendations-list" class="recommendations-list">
-            <li class="recommendation-card recommendation-card--placeholder">
-              <strong>추천을 계산하는 중...</strong>
-              <span>8501 대시보드가 업비트 전체 마켓을 분석한 뒤 TOP5를 표시합니다.</span>
-            </li>
-          </ul>
-          <aside class="recommendations-footnote">
-            <h3>어떻게 선별하나요?</h3>
-            <p>
-              AI 엔진이 EMA 추세, RSI/MACD, 변동성, 기관 센티먼트, 돌파 확률, 유동성 펄스를 함께 평가해
-              점수화합니다. 매수 시나리오일수록 가중치를 높이고, 과도한 변동성은 자동으로 감점합니다.
-            </p>
-            <p class="muted">
-              추천 결과는 실시간 시황, 페이퍼 계좌, 오토파일럿에 그대로 적용할 수 있으며, Synology Chat 알림과도 연동됩니다.
-            </p>
-          </aside>
-        </div>
-        <div id="recommendations-errors" class="recommendations-errors"></div>
       </section>
 
       <section class="panel panel--live">
@@ -590,178 +802,6 @@
         </div>
       </section>
 
-      <section class="panel panel--metrics">
-        <header>
-          <h2>핵심 지표</h2>
-          <span class="badge">실시간</span>
-        </header>
-        <div class="metric-grid">
-          <article class="metric-card">
-            <span class="metric-label">총 수익률</span>
-            <strong id="metric-total-return" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">전략 누적 성과</span>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">연환산 수익률</span>
-            <strong id="metric-annual-return" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">연간 기준</span>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">최대 낙폭</span>
-            <strong id="metric-drawdown" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">리스크 헬스체크</span>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">거래 요약</span>
-            <div class="metric-stack">
-              <span id="metric-trade-count">0건</span>
-              <span id="metric-trade-winrate">승률 0.0%</span>
-              <span id="metric-trade-avg">평균 0.0%</span>
-              <span id="metric-trade-expectancy">기대 0.0%</span>
-              <span id="metric-trade-median">중앙값 0.0%</span>
-              <span id="metric-trade-winloss">승패비 0.00</span>
-              <span id="metric-trade-payoff">페이오프 0.00</span>
-              <span id="metric-trade-best">최대수익 0.0%</span>
-              <span id="metric-trade-worst">최대손실 0.0%</span>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="panel panel--risk">
-        <header>
-          <h2>전문가 리스크 패널</h2>
-          <span class="panel-subtitle">변동성부터 노출시간까지, 투자위원회용 리포트</span>
-        </header>
-        <div class="metric-grid metric-grid--dense">
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">연간 변동성</span>
-            <strong id="metric-volatility" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">위험 대비 포지션 진폭</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">샤프 비율</span>
-            <strong id="metric-sharpe" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">위험 대비 수익</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">소르티노 비율</span>
-            <strong id="metric-sortino" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">하락 리스크만 고려</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">칼마 비율</span>
-            <strong id="metric-calmar" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">낙폭 대비 수익</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">95% VaR</span>
-            <strong id="metric-var" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">손실 한계 추정</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">노출 시간</span>
-            <strong id="metric-exposure" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">시장 체류 비중</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">프로핏 팩터</span>
-            <strong id="metric-profit-factor" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">이익/손실 비율</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">기대 수익률</span>
-            <strong id="metric-expectancy" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">거래당 기대값</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">평균 보유</span>
-            <strong id="metric-hold" class="metric-value metric-value--compact">0.0봉</strong>
-            <span class="metric-subtext">전략 체류 기간</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">울서 지수</span>
-            <strong id="metric-ulcer" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">심리적 낙폭 스트레스</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">다운사이드 변동성</span>
-            <strong id="metric-downside" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">하락 전용 표준편차</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">회복 계수</span>
-            <strong id="metric-recovery" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">수익률 대비 낙폭</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">평균 승률</span>
-            <strong id="metric-avg-win" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">이기는 거래 평균</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">평균 손실률</span>
-            <strong id="metric-avg-loss" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">지는 거래 평균</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">승패 비율</span>
-            <strong id="metric-winloss" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">리스크/리워드</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">테일 비율</span>
-            <strong id="metric-tail" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">꼬리 위험 대비 기회</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">오메가 비율</span>
-            <strong id="metric-omega" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">손실 대비 기회 비중</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">켈리 지수</span>
-            <strong id="metric-kelly" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">최적 베팅 비중 가이드</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">연속 승리</span>
-            <strong id="metric-streak-win" class="metric-value metric-value--compact">0회</strong>
-            <span class="metric-subtext">최대 우상향 스트릭</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">연속 손실</span>
-            <strong id="metric-streak-loss" class="metric-value metric-value--compact">0회</strong>
-            <span class="metric-subtext">최대 연속 하락 스트릭</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">왜도</span>
-            <strong id="metric-skewness" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">수익 분포 비대칭</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">첨도</span>
-            <strong id="metric-kurtosis" class="metric-value metric-value--compact">0.00</strong>
-            <span class="metric-subtext">꼬리 두께 집중도</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">평균 낙폭</span>
-            <strong id="metric-avg-drawdown" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">낙폭 평균 깊이</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">페인 인덱스</span>
-            <strong id="metric-pain" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">포트폴리오 고통 지수</span>
-          </article>
-          <article class="metric-card metric-card--compact">
-            <span class="metric-label">최대 상승폭</span>
-            <strong id="metric-runup" class="metric-value metric-value--compact">0.00%</strong>
-            <span class="metric-subtext">트로프 대비 최고 반등</span>
-          </article>
-        </div>
-      </section>
-
       <section class="panel panel--alpha">
         <header>
           <h2>알파 브리핑</h2>
@@ -1021,30 +1061,6 @@
         <pre id="rebalance-output" class="rebalance-output">리밸런싱 결과가 여기에 표시됩니다.</pre>
       </section>
 
-      <section class="panel panel--trades">
-        <header>
-          <h2>거래 히스토리</h2>
-          <span class="panel-subtitle">실행 로그로 전략의 감각을 확인하세요</span>
-        </header>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>진입</th>
-                <th>청산</th>
-                <th>진입가</th>
-                <th>청산가</th>
-                <th>수량</th>
-                <th>PnL (KRW)</th>
-                <th>수익률</th>
-                <th>보유 봉수</th>
-                <th>청산 사유</th>
-              </tr>
-            </thead>
-            <tbody id="trade-table"></tbody>
-          </table>
-        </div>
-      </section>
     </main>
 
     <footer class="footer">

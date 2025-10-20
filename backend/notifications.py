@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 try:  # pragma: no cover - optional dependency during import
     import httpx
@@ -15,6 +16,49 @@ _last_attempt_at: Optional[datetime] = None
 _last_success_at: Optional[datetime] = None
 _last_error: Optional[str] = None
 _last_message: Optional[str] = None
+
+
+def _clean_webhook_url(raw: Optional[str]) -> str:
+    """Return a normalised webhook URL without stray quotes or encodings."""
+
+    if not raw:
+        return ""
+
+    cleaned = raw.strip().strip("'\"")
+    if not cleaned:
+        return ""
+
+    # 사용자들이 토큰 앞뒤에 따옴표를 붙이거나 %22로 인코딩하는 경우가 많아 제거한다.
+    cleaned = cleaned.replace("%22", "")
+
+    try:
+        parsed = urlparse(cleaned)
+    except Exception:  # pragma: no cover - parsing 실패 시 원본 사용
+        return cleaned
+
+    query_items = []
+    if parsed.query:
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            if value is None:
+                new_value = ""
+            else:
+                new_value = unquote(value).strip().strip("'\"")
+            query_items.append((key, new_value))
+    rebuilt = parsed._replace(query=urlencode(query_items, doseq=True))
+    return urlunparse(rebuilt)
+
+
+def _resolve_webhook_url(override: Optional[str] = None) -> str:
+    candidates = (
+        override,
+        os.getenv("SADO_CHAT_WEBHOOK"),
+        os.getenv("SYNOLOGY_CHAT_WEBHOOK"),
+    )
+    for candidate in candidates:
+        cleaned = _clean_webhook_url(candidate)
+        if cleaned:
+            return cleaned
+    return ""
 
 
 def _record_attempt(*, success: bool, message: str, error: Optional[str]) -> None:
@@ -45,11 +89,7 @@ def notify_synology_chat(
     decide whether to retry without interrupting trading flows.
     """
 
-    url = (
-        webhook_url
-        or os.getenv("SADO_CHAT_WEBHOOK")
-        or os.getenv("SYNOLOGY_CHAT_WEBHOOK")
-    )
+    url = _resolve_webhook_url(webhook_url)
     if not url:
         _record_attempt(success=False, message=message, error="웹훅 URL이 설정되지 않았습니다.")
         return False
@@ -78,9 +118,7 @@ def notify_synology_chat(
 
 def get_synology_chat_status() -> dict:
     return {
-        "configured": bool(
-            os.getenv("SADO_CHAT_WEBHOOK") or os.getenv("SYNOLOGY_CHAT_WEBHOOK")
-        ),
+        "configured": bool(_resolve_webhook_url()),
         "last_attempt_at": _last_attempt_at,
         "last_success_at": _last_success_at,
         "last_error": _last_error,

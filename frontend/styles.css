@@ -117,6 +117,87 @@ body {
   box-shadow: var(--shadow);
 }
 
+.panel--topline {
+  padding: 2.5rem;
+}
+
+.topline-grid {
+  display: grid;
+  gap: 1.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.topline-column {
+  display: flex;
+  align-items: stretch;
+}
+
+.topline-card {
+  background: rgba(8, 13, 28, 0.75);
+  border: 1px solid rgba(122, 225, 255, 0.16);
+  border-radius: 20px;
+  padding: 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  width: 100%;
+  flex: 1 1 auto;
+  box-shadow: inset 0 0 0 1px rgba(122, 225, 255, 0.06);
+}
+
+.topline-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.topline-card__header h3 {
+  font-size: 1.35rem;
+}
+
+.topline-card__header .panel-subtitle {
+  margin-left: auto;
+  text-align: right;
+}
+
+.topline-card--trades {
+  gap: 1rem;
+}
+
+.metric-grid--topline {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.metric-grid--extended {
+  margin-top: 1.2rem;
+}
+
+.table-wrapper--compact {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 320px;
+  border-radius: 18px;
+  background: rgba(5, 10, 24, 0.65);
+  border: 1px solid rgba(122, 225, 255, 0.12);
+}
+
+.table-wrapper--compact table {
+  min-width: 720px;
+}
+
+@media (max-width: 1200px) {
+  .topline-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .topline-card__header .panel-subtitle {
+    text-align: left;
+    margin-left: 0;
+  }
+}
+
 .panel--markets .panel-subtitle {
   max-width: 720px;
 }

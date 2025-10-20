@@ -40,6 +40,29 @@ def test_notify_synology_chat_with_stub_client(monkeypatch):
     assert status["last_success_at"] is not None
 
 
+def test_notify_synology_chat_strips_encoded_quotes(monkeypatch):
+    reset_chat_state()
+    calls = []
+
+    class StubClient:
+        def post(self, url, json, timeout):  # noqa: ARG002
+            calls.append(url)
+            return SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+
+        def close(self):
+            return None
+
+    monkeypatch.setenv(
+        "SADO_CHAT_WEBHOOK",
+        "http://example.com/webapi/entry.cgi?token=%22ABCDEF123%22",
+    )
+
+    result = notifications.notify_synology_chat("테스트", client=StubClient())
+
+    assert result is True
+    assert calls[0] == "http://example.com/webapi/entry.cgi?token=ABCDEF123"
+
+
 def test_chat_notification_endpoint(monkeypatch):
     reset_chat_state()
     received = {}
