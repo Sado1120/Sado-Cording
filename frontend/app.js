@@ -180,6 +180,12 @@ const marketSearchInput = document.getElementById("market-search");
 const marketResultsEl = document.getElementById("market-results");
 const marketBaseButtons = document.querySelectorAll("[data-market-base]");
 const marketGroupsEl = document.getElementById("market-groups");
+const toplinePaperHeartbeatEl = document.getElementById("topline-paper-heartbeat");
+const toplinePaperNoteEl = document.getElementById("topline-paper-note");
+const toplineAutopilotStatusEl = document.getElementById("topline-autopilot-status");
+const toplineAutopilotNoteEl = document.getElementById("topline-autopilot-note");
+const toplineLiveStatusEl = document.getElementById("topline-live-status");
+const toplineLiveNoteEl = document.getElementById("topline-live-note");
 
 const totalReturnEl = document.getElementById("metric-total-return");
 const annualReturnEl = document.getElementById("metric-annual-return");
@@ -1127,9 +1133,14 @@ fetchMarketDirectory().catch(() => {});
 loadRecommendations().catch(() => {});
 
 const setPaperHeartbeat = (state, message) => {
-  if (!paperHeartbeatEl) return;
-  paperHeartbeatEl.dataset.status = state;
-  paperHeartbeatEl.textContent = message;
+  if (paperHeartbeatEl) {
+    paperHeartbeatEl.dataset.status = state;
+    paperHeartbeatEl.textContent = message;
+  }
+  if (toplinePaperHeartbeatEl) {
+    toplinePaperHeartbeatEl.dataset.status = state;
+    toplinePaperHeartbeatEl.textContent = message;
+  }
 };
 
 const updatePaperSourceLabel = (balance) => {
@@ -1391,6 +1402,20 @@ const updateLiveInsights = (insights, source) => {
     liveUpdatedEl.textContent = `${new Date(insights.latest_timestamp).toLocaleString("ko-KR")}`;
   if (liveSourceEl)
     liveSourceEl.textContent = source === "synthetic" ? "시뮬레이터 데이터" : "업비트 실시간";
+  if (toplineLiveStatusEl) {
+    const state = source === "upbit" ? "online" : source === "synthetic" ? "warning" : "loading";
+    const label = source === "upbit" ? "실시간" : source === "synthetic" ? "시뮬레이션" : "동기화";
+    toplineLiveStatusEl.dataset.status = state;
+    toplineLiveStatusEl.textContent = label;
+  }
+  if (toplineLiveNoteEl) {
+    const updated = insights.latest_timestamp ? new Date(insights.latest_timestamp) : null;
+    const relative = updated && !Number.isNaN(updated.getTime()) ? formatRelativeTime(updated) : "시간 확인 필요";
+    const marketLabel = insights.market || liveMarketInput?.value || "KRW-BTC";
+    const intervalLabel = insights.interval ? describeInterval(insights.interval) : describeInterval(liveIntervalSelect?.value || "minute1");
+    toplineLiveNoteEl.textContent = `${marketLabel} · ${intervalLabel} · ${relative}`;
+    toplineLiveNoteEl.classList.add("muted");
+  }
 };
 
 const syncPaperWithLivePrice = async (market, price, latestTimestamp, source) => {
@@ -1442,6 +1467,14 @@ const refreshLiveMarket = async () => {
     }
     if (liveSourceEl) {
       liveSourceEl.textContent = "연결 실패";
+    }
+    if (toplineLiveStatusEl) {
+      toplineLiveStatusEl.dataset.status = "offline";
+      toplineLiveStatusEl.textContent = "연결 실패";
+    }
+    if (toplineLiveNoteEl) {
+      toplineLiveNoteEl.textContent = error.message || "시세 데이터를 불러오지 못했습니다.";
+      toplineLiveNoteEl.classList.remove("muted");
     }
   }
 };
@@ -1610,6 +1643,11 @@ const renderAutopilotStatus = (status) => {
   autopilotStateEl.dataset.status = pillState;
   autopilotStateEl.textContent = stateLabel;
 
+  if (toplineAutopilotStatusEl) {
+    toplineAutopilotStatusEl.dataset.status = pillState;
+    toplineAutopilotStatusEl.textContent = stateLabel;
+  }
+
   if (autopilotLastRunEl) {
     autopilotLastRunEl.textContent = status?.last_cycle_started_at
       ? formatDateTime(new Date(status.last_cycle_started_at))
@@ -1625,6 +1663,25 @@ const renderAutopilotStatus = (status) => {
   if (autopilotLastErrorEl) {
     autopilotLastErrorEl.textContent = status?.last_error || "";
     autopilotLastErrorEl.classList.toggle("muted", !status?.last_error);
+  }
+
+  if (toplineAutopilotNoteEl) {
+    const noteParts = [];
+    if (status?.config?.market) {
+      noteParts.push(status.config.market);
+    }
+    if (status?.config?.interval) {
+      noteParts.push(describeInterval(status.config.interval));
+    }
+    if (status?.last_cycle_started_at) {
+      noteParts.push(`최근 ${formatRelativeTime(new Date(status.last_cycle_started_at))}`);
+    } else if (status?.last_error) {
+      noteParts.push(status.last_error);
+    } else {
+      noteParts.push("최근 실행 정보 없음");
+    }
+    toplineAutopilotNoteEl.textContent = noteParts.join(" · ");
+    toplineAutopilotNoteEl.classList.toggle("muted", !status?.last_error);
   }
 
   if (status?.config) {
@@ -1674,6 +1731,14 @@ const fetchAutopilotStatus = async () => {
     autopilotStateEl.dataset.status = "offline";
     autopilotStateEl.textContent = "오프라인";
     if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = error.message;
+    if (toplineAutopilotStatusEl) {
+      toplineAutopilotStatusEl.dataset.status = "offline";
+      toplineAutopilotStatusEl.textContent = "오프라인";
+    }
+    if (toplineAutopilotNoteEl) {
+      toplineAutopilotNoteEl.textContent = error.message || "연결 실패";
+      toplineAutopilotNoteEl.classList.remove("muted");
+    }
   }
 };
 
@@ -2078,6 +2143,11 @@ async function requestApi(path, options = {}) {
         throw error;
       }
 
+      if (shouldResetStoredBase(base)) {
+        applyApiBase(DEFAULT_API_BASE, { persist: true, silent: true });
+        continue;
+      }
+
       const alternate = deriveAlternateBase(base);
       if (alternate && !attempted.has(alternate)) {
         applyApiBase(alternate, { persist: true, silent: true });
@@ -2212,6 +2282,23 @@ const updatePaperSummary = (balance) => {
   if (paperStatusIntervalSelect && balance?.interval) {
     paperStatusIntervalSelect.value = balance.interval;
   }
+  if (toplinePaperNoteEl) {
+    if (!balance) {
+      toplinePaperNoteEl.textContent = "상태 확인 필요";
+    } else {
+      const updatedAt = balance.last_updated ? new Date(balance.last_updated) : null;
+      const relative = updatedAt && !Number.isNaN(updatedAt.getTime()) ? formatRelativeTime(updatedAt) : "시간 확인 필요";
+      const labels = [];
+      if (balance.market) {
+        labels.push(balance.market);
+      }
+      if (balance.interval) {
+        labels.push(describeInterval(balance.interval));
+      }
+      toplinePaperNoteEl.textContent = `${labels.join(" · ") || "모니터링 미설정"} · ${relative}`;
+    }
+    toplinePaperNoteEl.classList.add("muted");
+  }
 };
 
 const fetchPaperStatus = async () => {
@@ -2231,6 +2318,10 @@ const fetchPaperStatus = async () => {
       paperPriceSourceEl.textContent = "연결 실패 - 상태 확인 필요";
       paperPriceSourceEl.classList.remove("muted", "status-note--highlight", "status-note--warning");
       paperPriceSourceEl.classList.add("status-note--warning");
+    }
+    if (toplinePaperNoteEl) {
+      toplinePaperNoteEl.textContent = error.message || "페이퍼 계좌 상태를 확인하지 못했습니다.";
+      toplinePaperNoteEl.classList.remove("muted");
     }
   }
 };

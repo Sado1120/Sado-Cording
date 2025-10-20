@@ -132,7 +132,7 @@ body {
   align-items: stretch;
 }
 
-.topline-card {
+.topline-card { 
   background: rgba(8, 13, 28, 0.75);
   border: 1px solid rgba(122, 225, 255, 0.16);
   border-radius: 20px;
@@ -143,6 +143,52 @@ body {
   width: 100%;
   flex: 1 1 auto;
   box-shadow: inset 0 0 0 1px rgba(122, 225, 255, 0.06);
+}
+
+.topline-status {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-top: 0.6rem;
+}
+
+.topline-status__item {
+  background: rgba(4, 9, 24, 0.58);
+  border: 1px solid rgba(122, 225, 255, 0.12);
+  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.topline-status__label {
+  font-weight: 600;
+  color: #a8c7ff;
+  letter-spacing: 0.01em;
+}
+
+.topline-status__note {
+  font-size: 0.82rem;
+}
+
+.topline-link {
+  margin-top: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #7ae1ff;
+  font-weight: 600;
+}
+
+.topline-link::after {
+  content: "→";
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.topline-link:hover {
+  text-decoration: underline;
 }
 
 .topline-card__header {
@@ -171,6 +217,56 @@ body {
 
 .metric-grid--extended {
   margin-top: 1.2rem;
+}
+
+.panel--analytics {
+  padding: 2.5rem;
+}
+
+.analytics-grid {
+  display: grid;
+  gap: 1.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.analytics-card {
+  background: rgba(8, 13, 28, 0.72);
+  border: 1px solid rgba(122, 225, 255, 0.14);
+  border-radius: 20px;
+  padding: 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  box-shadow: inset 0 0 0 1px rgba(122, 225, 255, 0.05);
+}
+
+.trade-metrics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.trade-metrics li {
+  background: rgba(5, 10, 24, 0.62);
+  border: 1px solid rgba(122, 225, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.trade-metrics span {
+  font-size: 0.85rem;
+  color: rgba(220, 233, 255, 0.76);
+}
+
+.trade-metrics strong {
+  font-size: 1.1rem;
+  color: #7ae1ff;
 }
 
 .table-wrapper--compact {
