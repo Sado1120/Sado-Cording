@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable, List, Optional
 
 from . import ai
@@ -59,6 +59,7 @@ class AutoTraderState:
     last_cycle_started_at: Optional[datetime] = None
     last_cycle_completed_at: Optional[datetime] = None
     logs: List[AutoTraderLogEntry] = field(default_factory=list)
+    next_cycle_due_at: Optional[datetime] = None
 
 
 class AutoTrader:
@@ -118,6 +119,7 @@ class AutoTrader:
             self._state.running = False
             self._append_log("info", "자동매매 오토파일럿을 중지했습니다.")
             self._safe_notify("자동매매 오토파일럿을 중지했습니다.")
+            self._state.next_cycle_due_at = None
 
         if thread and thread.is_alive():
             thread.join(timeout=2)
@@ -135,6 +137,7 @@ class AutoTrader:
                 last_cycle_started_at=self._state.last_cycle_started_at,
                 last_cycle_completed_at=self._state.last_cycle_completed_at,
                 logs=list(self._state.logs),
+                next_cycle_due_at=self._state.next_cycle_due_at,
             )
         return snapshot
 
@@ -245,6 +248,10 @@ class AutoTrader:
                 self._state.last_execution = execution or self._state.last_execution
                 self._state.last_error = None
                 self._state.last_cycle_completed_at = self._time_provider()
+                interval_seconds = max(10.0, float(config.poll_interval))
+                self._state.next_cycle_due_at = self._state.last_cycle_completed_at + timedelta(
+                    seconds=interval_seconds
+                )
 
             if execution:
                 self._append_log(
@@ -258,6 +265,11 @@ class AutoTrader:
             with self._lock:
                 self._state.last_error = str(exc)
                 self._state.last_cycle_completed_at = self._time_provider()
+                if config is not None:
+                    interval_seconds = max(10.0, float(config.poll_interval))
+                    self._state.next_cycle_due_at = self._state.last_cycle_completed_at + timedelta(
+                        seconds=interval_seconds
+                    )
             self._append_log("error", f"자동매매 사이클 실패: {exc}")
 
     def _safe_news(self) -> List[dict]:

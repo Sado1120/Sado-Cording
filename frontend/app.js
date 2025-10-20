@@ -184,6 +184,7 @@ const toplinePaperHeartbeatEl = document.getElementById("topline-paper-heartbeat
 const toplinePaperNoteEl = document.getElementById("topline-paper-note");
 const toplineAutopilotStatusEl = document.getElementById("topline-autopilot-status");
 const toplineAutopilotNoteEl = document.getElementById("topline-autopilot-note");
+const toplineAutopilotCountdownEl = document.getElementById("topline-autopilot-countdown");
 const toplineLiveStatusEl = document.getElementById("topline-live-status");
 const toplineLiveNoteEl = document.getElementById("topline-live-note");
 
@@ -647,9 +648,11 @@ const autopilotLastErrorEl = document.getElementById("autopilot-last-error");
 const autopilotLogList = document.getElementById("autopilot-log");
 const autopilotStartBtn = document.getElementById("autopilot-start");
 const autopilotStopBtn = document.getElementById("autopilot-stop");
+const autopilotNextCountdownEl = document.getElementById("autopilot-next-countdown");
 const copilotLogEl = document.getElementById("copilot-log");
 const diagnosticsListEl = document.getElementById("diagnostics-list");
 const diagnosticsRefreshBtn = document.getElementById("diagnostics-refresh");
+const backToTopBtn = document.getElementById("back-to-top");
 
 if (copilotQuestionInput && !copilotQuestionInput.value) {
   copilotQuestionInput.value = "지금 시장 전략을 요약해줘";
@@ -667,6 +670,7 @@ let lastSimulationContext = {
   interval: null,
   useLiveData: false,
 };
+let autopilotNextCycleAt = null;
 
 const describeInterval = (value) => {
   const mapping = {
@@ -1191,6 +1195,32 @@ const formatRelativeTime = (date) => {
   return `${days}일 전`;
 };
 
+const formatCountdown = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) {
+    return "곧 실행";
+  }
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) {
+    return "1분 이내";
+  }
+  if (minutes < 60) {
+    return `${minutes}분 후`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes
+      ? `${hours}시간 ${remainingMinutes}분 후`
+      : `${hours}시간 후`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}일 후`;
+};
+
 const formatShortTime = (value) => {
   if (!value) return "";
   const date = new Date(value);
@@ -1323,7 +1353,14 @@ const formatRatio = (value) =>
     : "0.00";
 
 const parseNumeric = (value) => {
-  const numeric = Number(value);
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return null;
+  }
+  const numeric = Number(trimmed);
   return Number.isFinite(numeric) ? numeric : null;
 };
 
@@ -1643,6 +1680,9 @@ const renderAutopilotStatus = (status) => {
   autopilotStateEl.dataset.status = pillState;
   autopilotStateEl.textContent = stateLabel;
 
+  autopilotNextCycleAt = status?.next_cycle_due_at ? new Date(status.next_cycle_due_at) : null;
+  updateAutopilotCountdown();
+
   if (toplineAutopilotStatusEl) {
     toplineAutopilotStatusEl.dataset.status = pillState;
     toplineAutopilotStatusEl.textContent = stateLabel;
@@ -1680,8 +1720,14 @@ const renderAutopilotStatus = (status) => {
     } else {
       noteParts.push("최근 실행 정보 없음");
     }
+    if (status?.next_cycle_due_at) {
+      const countdown = formatCountdown(status.next_cycle_due_at);
+      if (countdown) {
+        noteParts.push(`다음 ${countdown}`);
+      }
+    }
     toplineAutopilotNoteEl.textContent = noteParts.join(" · ");
-    toplineAutopilotNoteEl.classList.toggle("muted", !status?.last_error);
+    toplineAutopilotNoteEl.classList.toggle("muted", noteParts.length === 0);
   }
 
   if (status?.config) {
@@ -1722,6 +1768,30 @@ const renderAutopilotStatus = (status) => {
   }
 };
 
+const updateAutopilotCountdown = () => {
+  if (!autopilotNextCycleAt) {
+    if (autopilotNextCountdownEl) {
+      autopilotNextCountdownEl.textContent = "예정 정보 없음";
+      autopilotNextCountdownEl.classList.add("muted");
+    }
+    if (toplineAutopilotCountdownEl) {
+      toplineAutopilotCountdownEl.textContent = "예정 정보 없음";
+      toplineAutopilotCountdownEl.classList.add("muted");
+    }
+    return;
+  }
+
+  const countdown = formatCountdown(autopilotNextCycleAt);
+  if (autopilotNextCountdownEl) {
+    autopilotNextCountdownEl.textContent = countdown || "예정 정보 없음";
+    autopilotNextCountdownEl.classList.toggle("muted", !countdown);
+  }
+  if (toplineAutopilotCountdownEl) {
+    toplineAutopilotCountdownEl.textContent = countdown || "예정 정보 없음";
+    toplineAutopilotCountdownEl.classList.toggle("muted", !countdown);
+  }
+};
+
 const fetchAutopilotStatus = async () => {
   if (!autopilotStateEl) return;
   try {
@@ -1739,6 +1809,8 @@ const fetchAutopilotStatus = async () => {
       toplineAutopilotNoteEl.textContent = error.message || "연결 실패";
       toplineAutopilotNoteEl.classList.remove("muted");
     }
+    autopilotNextCycleAt = null;
+    updateAutopilotCountdown();
   }
 };
 
@@ -2899,12 +2971,17 @@ const handleOrderSubmit = async (event) => {
     volume: parseNumeric(formData.get("volume")),
   };
 
-  if (!payload.volume) {
+  if (payload.volume === null || payload.volume <= 0) {
     orderResultEl.textContent = "유효한 수량을 입력하세요.";
     return;
   }
 
-  if (payload.price === null) {
+  if (payload.price === null || payload.price <= 0) {
+    delete payload.price;
+    if (payload.ord_type === "limit") {
+      payload.ord_type = "market";
+    }
+  } else if (payload.ord_type === "market") {
     delete payload.price;
   }
 
@@ -3106,6 +3183,24 @@ paperStatusApplyBtn?.addEventListener("click", (event) => {
   event.preventDefault();
   fetchPaperStatus();
 });
+
+const handleBackToTopVisibility = () => {
+  if (!backToTopBtn) return;
+  if (window.scrollY > 400) {
+    backToTopBtn.classList.add("is-visible");
+  } else {
+    backToTopBtn.classList.remove("is-visible");
+  }
+};
+
+if (backToTopBtn) {
+  backToTopBtn.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+window.addEventListener("scroll", handleBackToTopVisibility, { passive: true });
+handleBackToTopVisibility();
 chatTestBtn?.addEventListener("click", (event) => {
   event.preventDefault();
   handleChatTest();
@@ -3158,3 +3253,4 @@ setInterval(() => {
 setInterval(() => {
   refreshDiagnostics().catch(() => {});
 }, 300_000);
+setInterval(updateAutopilotCountdown, 5_000);

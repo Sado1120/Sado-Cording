@@ -25,6 +25,58 @@ body {
   line-height: 1.6;
 }
 
+.global-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 8vw;
+  background: rgba(11, 14, 23, 0.82);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(122, 225, 255, 0.18);
+}
+
+.global-nav__brand {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.global-nav__links {
+  list-style: none;
+  display: flex;
+  gap: 1.2rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.global-nav__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.global-nav__links a:hover {
+  background: rgba(122, 225, 255, 0.12);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.global-nav__links span[aria-hidden="true"] {
+  font-size: 1.1rem;
+}
+
 .hero {
   position: relative;
   padding: 5rem 8vw 4rem;
@@ -170,6 +222,11 @@ body {
 
 .topline-status__note {
   font-size: 0.82rem;
+}
+
+.topline-status__countdown {
+  font-size: 0.78rem;
+  color: #9be9ff;
 }
 
 .topline-link {
@@ -1888,6 +1945,33 @@ tbody tr:hover {
   padding: 2.5rem 8vw 3rem;
   text-align: center;
   color: var(--text-secondary);
+}
+
+.back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(122, 225, 255, 0.85);
+  color: #041125;
+  font-weight: 700;
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 15px 30px rgba(7, 12, 28, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.back-to-top.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-4px);
 }
 
 @media (max-width: 768px) {

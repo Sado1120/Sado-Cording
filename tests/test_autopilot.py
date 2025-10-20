@@ -99,6 +99,7 @@ def test_autotrader_runs_single_cycle_and_places_order():
         assert state.last_execution is not None
         assert state.last_execution.side == "bid"
         assert state.logs, "오토파일럿 로그가 비어 있습니다."
+        assert state.next_cycle_due_at is not None
 
         snapshot = broker.snapshot()
         assert any(pos.market == "KRW-BTC" for pos in snapshot.positions)
@@ -158,11 +159,13 @@ def test_autopilot_api_endpoints(monkeypatch):
         start_data = start_response.json()
         assert start_data["running"] is True
         assert start_data["last_plan"]["side"] == "bid"
+        assert start_data["next_cycle_due_at"] is not None
 
         status_response = client.get("/trading/autopilot/status")
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert status_data["config"]["market"] == "KRW-BTC"
+        assert "next_cycle_due_at" in status_data
 
         stop_response = client.post("/trading/autopilot/stop")
         assert stop_response.status_code == 200

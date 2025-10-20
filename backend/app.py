@@ -241,6 +241,7 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
         last_error=state.last_error,
         last_cycle_started_at=state.last_cycle_started_at,
         last_cycle_completed_at=state.last_cycle_completed_at,
+        next_cycle_due_at=state.next_cycle_due_at,
         logs=logs,
     )
 

@@ -43,6 +43,10 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "market-search" in html, "Market explorer search box must be available"
     assert "market-results" in html, "Market explorer results grid should exist"
     assert "market-groups" in html, "Market explorer group filter container must exist"
+    assert "global-nav" in html, "Global navigation bar should be rendered"
+    assert "back-to-top" in html, "Back-to-top control should exist for long dashboards"
+    assert "topline-autopilot-countdown" in html, "Autopilot countdown indicator should be visible"
+    assert "autopilot-next-countdown" in html, "Autopilot status block should show next cycle countdown"
 
 
 def test_stylesheet_contains_korean_font_stack():

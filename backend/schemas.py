@@ -585,6 +585,7 @@ class AutoPilotStatusResponse(BaseModel):
     last_error: Optional[str]
     last_cycle_started_at: Optional[datetime]
     last_cycle_completed_at: Optional[datetime]
+    next_cycle_due_at: Optional[datetime]
     logs: List[AutoPilotLogEntryPayload]
 
 

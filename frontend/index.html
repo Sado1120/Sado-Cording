@@ -24,7 +24,30 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <script src="app.js" type="module" defer></script>
   </head>
-  <body>
+  <body id="top">
+    <nav class="global-nav" aria-label="주요 패널 바로가기">
+      <div class="global-nav__brand">Sado Trade Bot</div>
+      <ul class="global-nav__links">
+        <li>
+          <a href="#panel-topline" title="요약 현황"><span aria-hidden="true">📊</span><span>요약</span></a>
+        </li>
+        <li>
+          <a href="#panel-system" title="운영 상태"><span aria-hidden="true">🛠️</span><span>운영</span></a>
+        </li>
+        <li>
+          <a href="#panel-markets" title="마켓 탐색"><span aria-hidden="true">🧭</span><span>마켓</span></a>
+        </li>
+        <li>
+          <a href="#panel-execution" title="실거래 &amp; 페이퍼 콘솔"><span aria-hidden="true">💼</span><span>트레이딩</span></a>
+        </li>
+        <li>
+          <a href="#panel-autopilot" title="오토파일럿"><span aria-hidden="true">🤖</span><span>오토파일럿</span></a>
+        </li>
+        <li>
+          <a href="#panel-copilot" title="AI 코파일럿"><span aria-hidden="true">🧠</span><span>코파일럿</span></a>
+        </li>
+      </ul>
+    </nav>
     <datalist id="market-options"></datalist>
     <header class="hero">
       <div class="hero__overlay"></div>
@@ -42,7 +65,7 @@
     </header>
 
     <main class="dashboard">
-      <section class="panel panel--topline">
+      <section class="panel panel--topline" id="panel-topline">
         <header>
           <h2>거래 성과 &amp; 추천 요약</h2>
           <span class="panel-subtitle">핵심 수익률, 봇 상태, 추천 코인을 먼저 확인하세요</span>
@@ -54,9 +77,6 @@
                 <h3>수익률 현황</h3>
                 <span class="badge">실시간</span>
               </div>
-              <p class="muted">
-                전략 시뮬레이션과 자동매매 손익을 요약해 상단에서 가독성 있게 제공합니다.
-              </p>
               <div class="metric-grid metric-grid--topline">
                 <article class="metric-card">
                   <span class="metric-label">총 수익률</span>
@@ -89,6 +109,7 @@
                   <span class="topline-status__label">오토파일럿</span>
                   <span id="topline-autopilot-status" class="status-pill" data-status="offline">대기</span>
                   <small id="topline-autopilot-note" class="topline-status__note muted">최근 실행 정보 없음</small>
+                  <small id="topline-autopilot-countdown" class="topline-status__countdown muted">예정 정보 없음</small>
                 </div>
                 <div class="topline-status__item">
                   <span class="topline-status__label">실시간 시세</span>
@@ -349,7 +370,7 @@
           </article>
         </div>
       </section>
-      <section class="panel panel--system">
+      <section class="panel panel--system" id="panel-system">
         <header>
           <h2>운영 상태 모니터</h2>
           <span class="panel-subtitle">Synology 컨테이너 8501 포트 전용 엔드포인트 제어</span>
@@ -396,7 +417,7 @@
         </div>
       </section>
 
-      <section class="panel panel--markets">
+      <section class="panel panel--markets" id="panel-markets">
         <header>
           <h2>업비트 마켓 탐색기</h2>
           <span class="panel-subtitle">코인을 검색하고 즉시 시뮬레이션·페이퍼·오토파일럿에 적용하세요</span>
@@ -549,7 +570,7 @@
         </div>
       </section>
 
-      <section class="panel panel--execution">
+      <section class="panel panel--execution" id="panel-execution">
         <header>
           <h2>실거래 & 페이퍼 트레이딩 콘솔</h2>
           <span class="panel-subtitle">업비트 실거래 주문과 가상 계좌 백테스트를 한 화면에서 제어</span>
@@ -659,7 +680,7 @@
         </div>
       </section>
 
-      <section class="panel panel--autopilot">
+      <section class="panel panel--autopilot" id="panel-autopilot">
         <header>
           <h2>AI 오토파일럿 제어</h2>
           <span class="panel-subtitle">실시간 자동매매 상태와 실행 로그 모니터링</span>
@@ -732,6 +753,10 @@
                 <span class="autopilot-label">최근 완료</span>
                 <strong id="autopilot-last-completed">-</strong>
               </div>
+              <div>
+                <span class="autopilot-label">다음 실행</span>
+                <strong id="autopilot-next-countdown" class="muted">예정 정보 없음</strong>
+              </div>
             </div>
             <div class="autopilot-status__section">
               <h3>최근 자동 주문</h3>
@@ -748,7 +773,7 @@
         </div>
       </section>
 
-      <section class="panel panel--copilot">
+      <section class="panel panel--copilot" id="panel-copilot">
         <header>
           <h2>AI 코파일럿 실시간 자문</h2>
           <span class="panel-subtitle">질문형 상담과 자동 매매 플랜을 동시에 확인</span>
@@ -1128,5 +1153,6 @@
         자동화, 데이터 스토리텔링, 감각적인 UX를 경험해보세요.
       </p>
     </footer>
+    <button id="back-to-top" class="back-to-top" type="button" aria-label="맨 위로">▲</button>
   </body>
 </html>
