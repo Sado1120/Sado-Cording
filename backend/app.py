@@ -632,6 +632,35 @@ def _evaluate_market_candidate(
     return ("", payload, candle_data.source)
 
 
+def _empty_market_recommendations(
+    *,
+    base: str,
+    interval: str,
+    limit: int,
+    error: str,
+) -> MarketRecommendationsResponse:
+    """Return a deterministic empty payload when analysis fails.
+
+    FastAPI previously surfaced ``500 Internal Server Error`` responses when the
+    background scoring routine raised an unexpected exception.  Returning a
+    structured fallback keeps the dashboard responsive and surfaces the error
+    message to the UI so operators immediately understand what went wrong.
+    """
+
+    safe_limit = max(1, min(limit, 10))
+    return MarketRecommendationsResponse(
+        generated_at=datetime.utcnow(),
+        interval=interval,
+        base_currency=base,
+        limit=safe_limit,
+        analysed_markets=0,
+        analysis_duration_ms=0.0,
+        analysis_source="synthetic",
+        recommendations=[],
+        errors=[error],
+    )
+
+
 def _compute_market_recommendations(
     *,
     base: str,
@@ -730,13 +759,22 @@ def _autopilot_recommendations(
     max_markets: int,
     include_warnings: bool,
 ) -> MarketRecommendationsResponse:
-    return _compute_market_recommendations(
-        base=base,
-        interval=interval,
-        limit=limit,
-        max_markets=max_markets,
-        include_warnings=include_warnings,
-    )
+    try:
+        return _compute_market_recommendations(
+            base=base,
+            interval=interval,
+            limit=limit,
+            max_markets=max_markets,
+            include_warnings=include_warnings,
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        error_message = f"내부 추천 엔진 오류: {exc}"
+        return _empty_market_recommendations(
+            base=base,
+            interval=interval,
+            limit=limit,
+            error=error_message,
+        )
 
 
 _auto_trader.set_recommendation_scanner(_autopilot_recommendations)
@@ -750,13 +788,22 @@ def get_market_recommendations(
     max_markets: int = 30,
     include_warnings: bool = False,
 ) -> MarketRecommendationsResponse:
-    return _compute_market_recommendations(
-        base=base,
-        interval=interval,
-        limit=limit,
-        max_markets=max_markets,
-        include_warnings=include_warnings,
-    )
+    try:
+        return _compute_market_recommendations(
+            base=base,
+            interval=interval,
+            limit=limit,
+            max_markets=max_markets,
+            include_warnings=include_warnings,
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        error_message = f"내부 추천 엔진 오류: {exc}"
+        return _empty_market_recommendations(
+            base=base,
+            interval=interval,
+            limit=limit,
+            error=error_message,
+        )
 
 
 @app.get("/market/upbit/candles", response_model=MarketCandlesResponse)

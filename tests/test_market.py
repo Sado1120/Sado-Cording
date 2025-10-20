@@ -243,6 +243,23 @@ def test_market_recommendations_endpoint(monkeypatch):
     assert response.errors and any("KRW-ERR" in error for error in response.errors)
 
 
+def test_market_recommendations_internal_error(monkeypatch):
+    import backend.app as app_module
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_module, "_compute_market_recommendations", boom)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=4)
+
+    assert response.limit == 4
+    assert response.analysed_markets == 0
+    assert response.recommendations == []
+    assert response.analysis_source == "synthetic"
+    assert response.errors and "boom" in response.errors[0]
+
+
 def test_ai_endpoints(monkeypatch):
     synthetic = generate_synthetic_prices(days=200, seed=99)
 
