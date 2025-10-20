@@ -106,6 +106,11 @@ class PaperBroker:
         self.last_update = datetime.utcnow()
         return position
 
+    def get_last_price(self, market: str) -> Optional[float]:
+        """Return the most recent marked price for the given market if available."""
+
+        return self.last_prices.get(market.upper())
+
     def submit_order(
         self,
         *,

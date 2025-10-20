@@ -1168,9 +1168,22 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
 @app.post("/trading/order", response_model=OrderResponse)
 def submit_order(payload: OrderRequest) -> OrderResponse:
     if payload.mode is OrderMode.PAPER:
+        market_code = payload.market.upper()
+        needs_price_refresh = payload.price is None or payload.price <= 0
+        if needs_price_refresh:
+            last_price = _paper_broker.get_last_price(market_code)
+            age_seconds = max(0.0, (datetime.utcnow() - _paper_broker.last_update).total_seconds())
+            if last_price is None or age_seconds > 90.0:
+                try:
+                    _refresh_paper_market(
+                        market=market_code,
+                        interval=_paper_interval_preference or "minute1",
+                    )
+                except MarketDataError:
+                    pass
         try:
             snapshot = _paper_broker.submit_order(
-                market=payload.market,
+                market=market_code,
                 side=payload.side,
                 price=payload.price,
                 volume=payload.volume,

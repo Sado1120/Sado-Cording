@@ -145,6 +145,48 @@ def test_market_orders_use_marked_price_and_hide_empty_positions():
     assert not sell_snapshot.positions
 
 
+def test_submit_market_order_without_price_triggers_refresh(monkeypatch):
+    reset_paper(PaperResetRequest(initial_cash=5_000_000))
+
+    broker = paper_broker()
+    broker.last_prices.clear()
+
+    class DummyData:
+        def __init__(self, price: float):
+            self.candles = [
+                trading.Candle(
+                    timestamp=datetime.utcnow(),
+                    open=price,
+                    high=price,
+                    low=price,
+                    close=price,
+                    volume=10.0,
+                )
+            ]
+            self.source = "synthetic"
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_candles",
+        lambda market="KRW-ETH", interval="minute1", count=1: DummyData(price=2_500_000),
+    )
+
+    response = submit_order(
+        OrderRequest(
+            mode=OrderMode.PAPER,
+            market="KRW-ETH",
+            side="bid",
+            ord_type="market",
+            price=None,
+            volume=0.1,
+        )
+    )
+
+    assert response.status == "filled"
+    assert response.balance.positions
+    assert response.balance.positions[0].market == "KRW-ETH"
+    assert response.balance.positions[0].volume == pytest.approx(0.1)
+
+
 def test_live_order_requires_keys(monkeypatch):
     reset_global_broker()
     monkeypatch.delenv("UPBIT_ACCESS_KEY", raising=False)

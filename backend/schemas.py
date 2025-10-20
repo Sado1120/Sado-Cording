@@ -202,8 +202,23 @@ class OrderRequest(BaseModel):
         side = values.get("side")
         price = values.get("price")
         volume = values.get("volume")
+        ord_type = values.get("ord_type")
         if volume is None or volume <= 0:
             raise ValueError("volume must be positive")
+
+        if ord_type == "market":
+            if price is not None and price < 0:
+                raise ValueError("price must be non-negative")
+            if price in {0, 0.0}:
+                values["price"] = None
+            return values
+
+        if ord_type == "limit" and (price is None or price <= 0):
+            raise ValueError("limit orders require a positive price")
+
+        if ord_type == "price" and (price is None or price <= 0):
+            raise ValueError("price orders require a positive amount")
+
         if side == "bid" and (price is None or price <= 0):
             raise ValueError("price must be positive for buy orders")
         return values
