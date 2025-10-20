@@ -199,5 +199,6 @@ def test_dashboard_handler_falls_back_to_localhost(monkeypatch):
 def test_app_js_falls_back_to_default_api_base():
     js = (PROJECT_ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
 
-    assert "base !== DEFAULT_API_BASE" in js, "requestApi should attempt default base when current endpoint fails"
+    assert "deriveAlternateBase(base)" in js, "requestApi should derive alternate API candidates when failures occur"
+    assert "pickNextApiCandidate(attempted)" in js, "requestApi should iterate through fallback candidates"
     assert "API 연결에 실패했습니다" in js, "User-facing error message must remain in Korean"

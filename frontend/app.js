@@ -17,6 +17,9 @@ const DEFAULT_API_BASE = (() => {
 const HOSTS_VISIBLE_ONLY_INSIDE_CONTAINERS = new Set(["backend", "frontend", "api", "web"]);
 const LOCAL_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
+let apiBaseCandidates = [];
+let apiBase = DEFAULT_API_BASE;
+
 const shouldResetStoredBase = (value) => {
   if (!value) {
     return true;
@@ -47,6 +50,117 @@ const shouldResetStoredBase = (value) => {
   }
 
   return false;
+};
+
+const normaliseBase = (value) => {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.replace(/\/+$/, "");
+};
+
+const loadInitialApiBase = () => {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) {
+    return DEFAULT_API_BASE;
+  }
+
+  const normalised = normaliseBase(stored);
+  if (shouldResetStoredBase(normalised)) {
+    localStorage.removeItem(STORAGE_KEY);
+    return DEFAULT_API_BASE;
+  }
+
+  return normalised || DEFAULT_API_BASE;
+};
+
+const joinApiUrl = (base, path) => {
+  if (!base) {
+    return path;
+  }
+  const normalisedBase = normaliseBase(base);
+  if (!normalisedBase) {
+    return path;
+  }
+  if (normalisedBase === "/") {
+    return path;
+  }
+  if (path.startsWith("/") && normalisedBase.endsWith("/")) {
+    return `${normalisedBase}${path.slice(1)}`;
+  }
+  if (!path.startsWith("/") && !normalisedBase.endsWith("/")) {
+    return `${normalisedBase}/${path}`;
+  }
+  return `${normalisedBase}${path}`;
+};
+
+const registerApiCandidate = (value, { front = false } = {}) => {
+  const normalised = normaliseBase(value);
+  if (!normalised) {
+    return "";
+  }
+  const index = apiBaseCandidates.indexOf(normalised);
+  if (index === -1) {
+    if (front) {
+      apiBaseCandidates.unshift(normalised);
+    } else {
+      apiBaseCandidates.push(normalised);
+    }
+  } else if (front && index > 0) {
+    apiBaseCandidates.splice(index, 1);
+    apiBaseCandidates.unshift(normalised);
+  }
+  return normalised;
+};
+
+const buildApiBaseCandidates = (initialValue) => {
+  apiBaseCandidates = [];
+  registerApiCandidate(initialValue, { front: true });
+  registerApiCandidate(DEFAULT_API_BASE);
+  registerApiCandidate("/api");
+
+  const { protocol, hostname, port } = window.location;
+  if (hostname) {
+    const originPort = port ? `:${port}` : "";
+    const originBase = `${protocol}//${hostname}${originPort}`;
+    registerApiCandidate(originBase);
+    registerApiCandidate(`${originBase}/api`);
+    if (!port || port !== "8000") {
+      registerApiCandidate(`${protocol}//${hostname}:8000`);
+      registerApiCandidate(`${protocol}//${hostname}:8000/api`);
+    }
+  }
+
+  registerApiCandidate("http://backend:8000");
+  registerApiCandidate("http://backend:8000/api");
+  registerApiCandidate("http://127.0.0.1:8000");
+  registerApiCandidate("http://localhost:8000");
+};
+
+const deriveAlternateBase = (value) => {
+  if (!value || value.startsWith("/")) {
+    return "";
+  }
+  if (value.endsWith("/api")) {
+    return normaliseBase(value.slice(0, -4));
+  }
+  return normaliseBase(`${value}/api`);
+};
+
+const pickNextApiCandidate = (attempted) => {
+  for (const candidate of apiBaseCandidates) {
+    if (!attempted.has(candidate)) {
+      return candidate;
+    }
+  }
+  return "";
 };
 
 const percentFormatter = new Intl.NumberFormat("ko-KR", {
@@ -705,42 +819,34 @@ const fetchMarketDirectory = async () => {
   }
 };
 
-const normaliseBase = (value) => {
-  if (!value) {
-    return DEFAULT_API_BASE;
+const initialApiBase = loadInitialApiBase();
+buildApiBaseCandidates(initialApiBase);
+
+const applyApiBase = (value, { persist = true, silent = false } = {}) => {
+  const normalised = registerApiCandidate(value, { front: true });
+  if (!normalised) {
+    return;
   }
-  return value.replace(/\/+$/, "");
+  apiBase = normalised;
+  if (persist) {
+    localStorage.setItem(STORAGE_KEY, normalised);
+  }
+  if (apiEndpointInput && apiEndpointInput.value !== normalised) {
+    apiEndpointInput.value = normalised;
+  }
+  if (!silent) {
+    refreshApiStatus();
+    handleSimulation();
+  }
 };
-
-const loadInitialApiBase = () => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) {
-    return DEFAULT_API_BASE;
-  }
-
-  const normalised = normaliseBase(stored);
-  if (shouldResetStoredBase(normalised)) {
-    localStorage.removeItem(STORAGE_KEY);
-    return DEFAULT_API_BASE;
-  }
-
-  return normalised;
-};
-
-let apiBase = loadInitialApiBase();
 
 const getApiBase = () => apiBase;
 
 const setApiBase = (value) => {
-  const normalised = normaliseBase(value);
-  apiBase = normalised;
-  localStorage.setItem(STORAGE_KEY, normalised);
-  if (apiEndpointInput && apiEndpointInput.value !== normalised) {
-    apiEndpointInput.value = normalised;
-  }
-  refreshApiStatus();
-  handleSimulation();
+  applyApiBase(value, { persist: true, silent: false });
 };
+
+applyApiBase(initialApiBase, { persist: false, silent: true });
 
 if (apiEndpointInput && !apiEndpointInput.value) {
   apiEndpointInput.value = apiBase;
@@ -1646,74 +1752,113 @@ const refreshDiagnostics = async () => {
   }
 };
 
-const requestApi = async (path, options = {}) => {
-  const base = getApiBase();
-  const url = `${base}${path}`;
-  const config = { ...options };
-  config.headers = {
-    ...(options.headers || {}),
-  };
-
+const executeApiRequest = async (base, path, buildConfig) => {
+  const url = joinApiUrl(base, path);
+  const config = buildConfig();
   let response;
   try {
     response = await fetch(url, config);
   } catch (error) {
-    if (base !== DEFAULT_API_BASE) {
-      apiBase = DEFAULT_API_BASE;
-      localStorage.setItem(STORAGE_KEY, apiBase);
-      if (apiEndpointInput && apiEndpointInput.value !== apiBase) {
-        apiEndpointInput.value = apiBase;
-      }
-      return requestApi(path, options);
-    }
-
-    const message = `API 연결에 실패했습니다. 현재 엔드포인트: ${base}`;
-    if (error && error.message) {
-      throw new Error(`${message} · ${error.message}`);
-    }
-    throw new Error(message);
+    const baseLabel = base || "/api";
+    const message = `API 연결에 실패했습니다. 현재 엔드포인트: ${baseLabel}`;
+    const fetchError = new Error(
+      error && error.message ? `${message} · ${error.message}` : message
+    );
+    fetchError.__retry = true;
+    throw fetchError;
   }
 
-  const isJson = response.headers.get("content-type")?.includes("application/json");
-  let payload;
-  let parseFailed = false;
-  if (isJson) {
+  const contentType = response.headers.get("content-type") || "";
+  const rawPayload = await response.text();
+  let parsedPayload = rawPayload;
+  let parsedFromJson = false;
+
+  if (contentType.includes("application/json")) {
     try {
-      payload = await response.json();
+      parsedPayload = rawPayload ? JSON.parse(rawPayload) : {};
+      parsedFromJson = true;
     } catch (error) {
-      parseFailed = true;
-      payload = await response.text();
+      const parseError = new Error("API 응답을 해석하지 못했습니다.");
+      parseError.__retry = true;
+      throw parseError;
     }
-  } else {
-    payload = await response.text();
   }
 
   if (!response.ok) {
-    const detail = typeof payload === "object" && payload !== null ? payload.detail : null;
-    throw new Error(detail || response.statusText || "요청에 실패했습니다.");
+    let detail = null;
+    if (parsedFromJson && parsedPayload && typeof parsedPayload === "object") {
+      detail = parsedPayload.detail || null;
+    }
+    const error = new Error(detail || response.statusText || "요청에 실패했습니다.");
+    if (response.status >= 500 || response.status === 404) {
+      error.__retry = true;
+    }
+    throw error;
   }
 
-  if (parseFailed) {
-    throw new Error("API 응답을 해석하지 못했습니다.");
-  }
-
-  if (typeof payload === "string") {
-    const trimmed = payload.trim();
+  if (typeof parsedPayload === "string") {
+    const trimmed = parsedPayload.trim();
     if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
-      throw new Error(
+      const htmlError = new Error(
         "HTML 응답을 수신했습니다. 대시보드의 API 엔드포인트가 FastAPI 백엔드로 연결되는지 확인해주세요."
       );
+      htmlError.__retry = true;
+      throw htmlError;
     }
     try {
       return JSON.parse(trimmed);
     } catch (error) {
-      throw new Error(
+      const textError = new Error(
         "예상과 다른 텍스트 응답을 받았습니다. API 연결 또는 역방향 프록시 구성을 점검해주세요."
       );
+      textError.__retry = true;
+      throw textError;
     }
   }
 
-  return payload;
+  return parsedPayload;
+};
+
+const requestApi = async (path, options = {}) => {
+  const attempted = new Set();
+  const buildConfig = () => {
+    const config = { ...options };
+    config.headers = {
+      ...(options.headers || {}),
+    };
+    return config;
+  };
+
+  let lastError = null;
+
+  while (true) {
+    const base = getApiBase();
+    try {
+      return await executeApiRequest(base, path, buildConfig);
+    } catch (error) {
+      lastError = error;
+      const retriable = Boolean(error && error.__retry);
+      attempted.add(base);
+
+      if (!retriable) {
+        throw error;
+      }
+
+      const alternate = deriveAlternateBase(base);
+      if (alternate && !attempted.has(alternate)) {
+        applyApiBase(alternate, { persist: true, silent: true });
+        continue;
+      }
+
+      const next = pickNextApiCandidate(attempted);
+      if (next) {
+        applyApiBase(next, { persist: true, silent: true });
+        continue;
+      }
+
+      throw lastError || error;
+    }
+  }
 };
 
 const renderPaperSummary = (balance) => {
