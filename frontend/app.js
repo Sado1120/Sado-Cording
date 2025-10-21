@@ -19,6 +19,10 @@ const LOCAL_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
 let apiBaseCandidates = [];
 let apiBase = DEFAULT_API_BASE;
+const DEFAULT_CAPITAL_KRW = 20_000_000;
+const COLLAPSIBLE_SELECTOR = "[data-collapsible]";
+const COLLAPSIBLE_DEFAULT_LIMIT = 220;
+const collapsibleMetadata = new WeakMap();
 
 const shouldResetStoredBase = (value) => {
   if (!value) {
@@ -1282,6 +1286,114 @@ const parseNumeric = (value) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+function applyDefaultCapitalValues() {
+  const defaultValue = String(DEFAULT_CAPITAL_KRW);
+  const targets = [
+    paperInitialCashInput,
+    autopilotCapitalInput,
+    copilotCapitalInput,
+    aiCapitalEl,
+    document.querySelector('input[name="initial_capital"]'),
+    document.getElementById("blueprint-capital"),
+    document.getElementById("portfolio-value"),
+  ];
+
+  const seen = new Set();
+  targets.forEach((element) => {
+    if (!element || seen.has(element)) {
+      return;
+    }
+    seen.add(element);
+    if (element instanceof HTMLInputElement) {
+      const current = parseNumeric(element.value);
+      const defaultNumeric = parseNumeric(element.defaultValue);
+      if (current === null || current === defaultNumeric) {
+        element.value = defaultValue;
+      }
+    }
+  });
+}
+
+function setupCollapsible(element, limit) {
+  if (!element) {
+    return;
+  }
+
+  const resolvedLimit = Number.isFinite(limit) && limit > 0 ? limit : COLLAPSIBLE_DEFAULT_LIMIT;
+  element.style.setProperty("--collapsible-max-height", `${resolvedLimit}px`);
+
+  if (collapsibleMetadata.has(element)) {
+    const meta = collapsibleMetadata.get(element);
+    if (meta) {
+      meta.limit = resolvedLimit;
+      element.style.setProperty("--collapsible-max-height", `${meta.limit}px`);
+      meta.update?.();
+    }
+    return;
+  }
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "btn btn--ghost btn--compact collapsible-toggle";
+
+  const metadata = {
+    limit: resolvedLimit,
+    toggle,
+    update: null,
+    mutationObserver: null,
+    resizeObserver: null,
+  };
+
+  const update = () => {
+    const threshold = metadata.limit + 12;
+    const shouldCollapse = element.scrollHeight > threshold;
+    if (!shouldCollapse) {
+      element.setAttribute("data-collapsed", "false");
+      toggle.style.display = "none";
+      toggle.setAttribute("aria-expanded", "true");
+      return;
+    }
+
+    const collapsed = element.getAttribute("data-collapsed") !== "false";
+    element.style.setProperty("--collapsible-max-height", `${metadata.limit}px`);
+    toggle.style.display = "inline-flex";
+    toggle.textContent = collapsed ? "더 보기" : "간단히";
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
+
+  metadata.update = update;
+
+  toggle.addEventListener("click", () => {
+    const collapsed = element.getAttribute("data-collapsed") !== "false";
+    element.setAttribute("data-collapsed", collapsed ? "false" : "true");
+    update();
+  });
+
+  element.parentNode?.insertBefore(toggle, element.nextSibling);
+  element.setAttribute("data-collapsed", "true");
+
+  const mutationObserver = new MutationObserver(update);
+  mutationObserver.observe(element, { childList: true, subtree: true, characterData: true });
+  metadata.mutationObserver = mutationObserver;
+
+  let resizeObserver = null;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(element);
+  }
+  metadata.resizeObserver = resizeObserver;
+
+  collapsibleMetadata.set(element, metadata);
+  update();
+}
+
+function initCollapsibles() {
+  document.querySelectorAll(COLLAPSIBLE_SELECTOR).forEach((element) => {
+    const limitAttr = Number(element.getAttribute("data-collapsible"));
+    setupCollapsible(element, limitAttr);
+  });
+}
+
 const renderLiveChart = (candles) => {
   if (!liveChartCanvas || !candles?.length) return;
   const context = liveChartCanvas.getContext("2d");
@@ -2081,7 +2193,7 @@ const refreshDiagnostics = async () => {
   }
 };
 
-const executeApiRequest = async (base, path, buildConfig) => {
+async function executeApiRequest(base, path, buildConfig) {
   const url = joinApiUrl(base, path);
   const config = buildConfig();
   let response;
@@ -2146,7 +2258,7 @@ const executeApiRequest = async (base, path, buildConfig) => {
   }
 
   return parsedPayload;
-};
+}
 
 async function requestApi(path, options = {}) {
   const attempted = new Set();
@@ -3195,6 +3307,8 @@ liveMarketInput?.addEventListener("keydown", (event) => {
   }
 });
 
+applyDefaultCapitalValues();
+initCollapsibles();
 refreshApiStatus();
 refreshChatStatus().catch(() => {});
 fetchPaperStatus();

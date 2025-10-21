@@ -78,7 +78,7 @@ class BalanceSnapshot:
 class PaperBroker:
     """In-memory execution engine for paper trading."""
 
-    def __init__(self, *, fee_rate: float = 0.0005, initial_cash: float = 50_000_000.0) -> None:
+    def __init__(self, *, fee_rate: float = 0.0005, initial_cash: float = 20_000_000.0) -> None:
         self.fee_rate = fee_rate
         self._initial_cash = float(initial_cash)
         self.reset(initial_cash=initial_cash)

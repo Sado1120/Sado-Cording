@@ -178,7 +178,7 @@
                 </li>
               </ul>
               <div id="recommendations-errors" class="recommendations-errors"></div>
-              <div class="recommendations-footnote">
+              <div class="recommendations-footnote" data-collapsible="220">
                 <h3>어떻게 선별하나요?</h3>
                 <p>
                   AI 엔진이 EMA 추세, RSI/MACD, 변동성, 기관 센티먼트, 돌파 확률, 유동성 펄스를 함께 평가해
@@ -535,7 +535,9 @@
                 <strong id="ai-regime">-</strong>
               </div>
             </div>
-            <p id="ai-summary" class="ai-intel__summary">AI 분석 요약이 여기에 표시됩니다.</p>
+            <p id="ai-summary" class="ai-intel__summary" data-collapsible="200">
+              AI 분석 요약이 여기에 표시됩니다.
+            </p>
             <p id="ai-institutional" class="ai-intel__institutional">기관 뉴스 센티먼트와 유동성 메모가 노출됩니다.</p>
             <ul id="ai-signals" class="ai-signals">
               <li>AI 지표 샘플이 여기에 표시됩니다.</li>
@@ -549,7 +551,7 @@
                 <div><dt>포지션 규모</dt><dd id="ai-size">-</dd></div>
               </dl>
               <p id="ai-risk-note" class="ai-risk__note">AI가 리스크 관리 코멘트를 여기에 표기합니다.</p>
-              <ul id="ai-risk-notes" class="ai-risk__list"></ul>
+              <ul id="ai-risk-notes" class="ai-risk__list" data-collapsible="220"></ul>
             </div>
             <div class="ai-consensus">
               <h4>다중 타임프레임 합의</h4>
@@ -655,7 +657,7 @@
               <form id="paper-reset-form" class="inline-form">
                 <label>
                   초기 자본 (KRW)
-                  <input id="paper-initial-cash" type="number" value="50000000" min="1000000" step="100000" />
+                  <input id="paper-initial-cash" type="number" value="20000000" min="1000000" step="100000" />
                 </label>
                 <button class="btn btn--accent btn--compact" type="submit">계좌 리셋</button>
               </form>
@@ -743,7 +745,7 @@
               </label>
               <label class="control-field">
                 <span>운용 자본 (KRW)</span>
-                <input id="autopilot-capital" type="number" value="30000000" min="1000000" step="500000" />
+                <input id="autopilot-capital" type="number" value="20000000" min="1000000" step="500000" />
               </label>
               <label class="control-field">
                 <span>평가 주기 (초)</span>
@@ -850,13 +852,13 @@
               <header>
                 <h3>코파일럿 응답</h3>
               </header>
-              <p id="copilot-answer" class="copilot-answer">
+              <p id="copilot-answer" class="copilot-answer" data-collapsible="220">
                 전략 질문을 입력하면 AI 코파일럿이 시장 요약과 권장 행동을 제안합니다.
               </p>
               <div class="copilot-columns">
                 <div>
                   <h4>핵심 요약</h4>
-                  <ul id="copilot-summary" class="copilot-list"></ul>
+                  <ul id="copilot-summary" class="copilot-list" data-collapsible="220"></ul>
                 </div>
                 <div>
                   <h4>실행 체크리스트</h4>
@@ -930,7 +932,9 @@
           <span class="panel-subtitle">켈리, 왜도, 낙폭 지수를 바탕으로 전략 운용 포인트 요약</span>
         </header>
         <div class="alpha-briefing__body">
-          <pre id="alpha-briefing">시뮬레이션을 실행하면 전문가 브리핑이 제공됩니다.</pre>
+          <pre id="alpha-briefing" data-collapsible="220">
+시뮬레이션을 실행하면 전문가 브리핑이 제공됩니다.
+          </pre>
         </div>
       </section>
 
@@ -1019,7 +1023,7 @@
           </label>
           <label class="control-field">
             <span>초기 자본 (KRW)</span>
-            <input type="number" name="initial_capital" min="100000" step="100000" value="5000000" />
+            <input type="number" name="initial_capital" min="100000" step="100000" value="20000000" />
           </label>
           <label class="control-field">
             <span>수수료율</span>
@@ -1058,7 +1062,7 @@
           <form id="ai-portfolio-form" class="ai-portfolio-form">
             <label class="control-field">
               <span>투자 자본 (KRW)</span>
-              <input id="ai-capital" name="capital" type="number" value="10000000" min="100000" step="100000" />
+              <input id="ai-capital" name="capital" type="number" value="20000000" min="100000" step="100000" />
             </label>
             <label class="control-field">
               <span>위험 성향</span>
@@ -1110,7 +1114,9 @@
             </div>
           </div>
         </div>
-        <div id="ai-briefings" class="ai-briefings">AI 시장 브리핑이 여기에 표시됩니다.</div>
+        <div id="ai-briefings" class="ai-briefings" data-collapsible="260">
+          AI 시장 브리핑이 여기에 표시됩니다.
+        </div>
       </section>
 
       <section class="panel panel--blueprint">
@@ -1122,7 +1128,7 @@
           <div class="blueprint-controls">
             <label class="control-field">
               <span>투자 자본 (KRW)</span>
-              <input id="blueprint-capital" type="number" value="10000000" step="100000" min="100000" />
+              <input id="blueprint-capital" type="number" value="20000000" step="100000" min="100000" />
             </label>
             <label class="control-field blueprint-slider">
               <span>위험 프로파일</span>
@@ -1220,7 +1226,7 @@
         <div class="portfolio-actions">
           <label class="control-field">
             <span>총 포트폴리오 가치 (KRW)</span>
-            <input id="portfolio-value" type="number" value="8000000" step="100000" />
+            <input id="portfolio-value" type="number" value="20000000" step="100000" />
           </label>
           <button id="rebalance-btn" class="btn btn--accent" type="button">리밸런싱 제안 받기</button>
         </div>

@@ -169,6 +169,35 @@ body {
   box-shadow: var(--shadow);
 }
 
+[data-collapsible] {
+  --collapsible-max-height: 220px;
+  position: relative;
+  overflow: hidden;
+  max-height: var(--collapsible-max-height);
+  transition: max-height 0.3s ease;
+}
+
+[data-collapsible][data-collapsed="false"] {
+  max-height: none;
+}
+
+[data-collapsible][data-collapsed="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 48px;
+  background: linear-gradient(180deg, rgba(6, 10, 24, 0) 0%, rgba(6, 10, 24, 0.88) 100%);
+  pointer-events: none;
+}
+
+.collapsible-toggle {
+  margin-top: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
 .panel--topline {
   padding: 2.5rem;
 }

@@ -1,4 +1,5 @@
 from email.message import Message
+import re
 from io import BytesIO
 from pathlib import Path
 from urllib.error import URLError
@@ -58,6 +59,50 @@ def test_dashboard_portfolio_textareas_have_defaults():
     assert '"symbol": "BTC"' in html, "Aggressive bucket defaults should include BTC"
     assert '"SPY": 0.35' in html, "Target allocation textarea should pre-fill diversified weights"
     assert '"QQQ": 1500000' in html, "Current positions textarea should surface sample holdings"
+
+
+def test_capital_inputs_share_same_default_value():
+    html = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+    expected = "20000000"
+
+    selectors = {
+        "paper": r'id="paper-initial-cash"[^>]*value="(\d+)"',
+        "strategy": r'name="initial_capital"[^>]*value="(\d+)"',
+        "ai": r'id="ai-capital"[^>]*value="(\d+)"',
+        "autopilot": r'id="autopilot-capital"[^>]*value="(\d+)"',
+        "copilot": r'id="copilot-capital"[^>]*value="(\d+)"',
+        "blueprint": r'id="blueprint-capital"[^>]*value="(\d+)"',
+        "portfolio": r'id="portfolio-value"[^>]*value="(\d+)"',
+    }
+
+    for label, pattern in selectors.items():
+        match = re.search(pattern, html)
+        assert match, f"Expected to find default capital value for {label} input"
+        assert (
+            match.group(1) == expected
+        ), f"Default capital for {label} should be {expected}, got {match.group(1)}"
+
+
+def test_collapsible_blocks_are_tagged():
+    html = (PROJECT_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+
+    targets = [
+        ("class", "recommendations-footnote"),
+        ("id", "ai-summary"),
+        ("id", "ai-risk-notes"),
+        ("id", "ai-briefings"),
+        ("id", "copilot-summary"),
+        ("id", "alpha-briefing"),
+    ]
+
+    for attr, value in targets:
+        if attr == "class":
+            pattern = rf'<[^>]*class="[^"]*\b{value}\b[^"]*"[^>]*data-collapsible'
+        else:
+            pattern = rf'<[^>]*{attr}="{value}"[^>]*data-collapsible'
+        assert re.search(
+            pattern, html
+        ), f"Expected {value} block to declare data-collapsible attribute"
 
 
 def test_stylesheet_contains_korean_font_stack():
