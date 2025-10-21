@@ -65,6 +65,7 @@ class TradePayload(BaseModel):
     return_pct: float
     duration_bars: int
     exit_reason: str
+    market: Optional[str] = None
 
 
 class MonteCarloSummary(BaseModel):

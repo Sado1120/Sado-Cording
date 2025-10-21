@@ -32,6 +32,7 @@ class Trade:
     quantity: float
     duration_bars: int
     exit_reason: str
+    market: Optional[str] = None
 
     @property
     def pnl(self) -> float:
@@ -79,6 +80,7 @@ class StrategyReport:
     average_drawdown_pct: float
     pain_index: float
     max_runup_pct: float
+    market: Optional[str] = None
 
 
 def generate_synthetic_prices(
@@ -230,6 +232,7 @@ def _monte_carlo_bootstrap(
 def run_ema_strategy(
     candles: Sequence[Candle],
     *,
+    market: Optional[str] = None,
     fast_period: int = 12,
     slow_period: int = 26,
     initial_capital: float = 5_000_000,
@@ -299,6 +302,7 @@ def run_ema_strategy(
                     quantity=position_qty,
                     duration_bars=duration_value,
                     exit_reason=exit_reason,
+                    market=market,
                 )
             )
             trade_durations.append(duration_value)
@@ -390,6 +394,7 @@ def run_ema_strategy(
                 quantity=position_qty,
                 duration_bars=duration_value,
                 exit_reason="end_of_data",
+                market=market,
             )
         )
         trade_durations.append(duration_value)
@@ -617,6 +622,7 @@ def run_ema_strategy(
         average_drawdown_pct=average_drawdown_pct,
         pain_index=pain_index,
         max_runup_pct=max_runup_pct,
+        market=market,
     )
 
 

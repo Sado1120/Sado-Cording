@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import json as jsonlib
+
 from fastapi import HTTPException
 
 from backend import notifications
@@ -21,9 +23,15 @@ def test_notify_synology_chat_with_stub_client(monkeypatch):
     calls = []
 
     class StubClient:
-        def post(self, url, json, timeout):
-            calls.append((url, json["text"]))
-            return SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+        def post(self, url, data=None, json=None, timeout=None, headers=None):  # noqa: ARG002
+            payload = data or {}
+            calls.append((url, payload.get("payload"), headers))
+            text = jsonlib.loads(payload["payload"])  # type: ignore[index]
+            return SimpleNamespace(
+                status_code=200,
+                raise_for_status=lambda: None,
+                json=lambda: {"success": True, "echo": text},
+            )
 
         def close(self):
             calls.append(("close", None))
@@ -35,7 +43,7 @@ def test_notify_synology_chat_with_stub_client(monkeypatch):
 
     assert result is True
     assert calls[0][0] == "https://example.com/webhook"
-    assert "테스트" in calls[0][1]
+    assert "테스트" in jsonlib.loads(calls[0][1])["text"]
 
     status = notifications.get_synology_chat_status()
     assert status["configured"] is True
@@ -49,9 +57,9 @@ def test_notify_synology_chat_strips_encoded_quotes(monkeypatch):
     calls = []
 
     class StubClient:
-        def post(self, url, json, timeout):  # noqa: ARG002
+        def post(self, url, data=None, json=None, timeout=None, headers=None):  # noqa: ARG002
             calls.append(url)
-            return SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+            return SimpleNamespace(status_code=200, raise_for_status=lambda: None, json=lambda: {"success": True})
 
         def close(self):
             return None

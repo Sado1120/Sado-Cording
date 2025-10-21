@@ -15,11 +15,13 @@ def test_generate_synthetic_prices_len_and_sorting():
 
 def test_run_ema_strategy_generates_trades():
     candles = trading.generate_synthetic_prices(days=60, seed=7)
-    report = trading.run_ema_strategy(candles, fast_period=8, slow_period=21)
+    report = trading.run_ema_strategy(candles, fast_period=8, slow_period=21, market="KRW-BTC")
     assert report.trades  # strategy should have at least one trade
     assert report.total_return_pct != 0
     assert report.max_drawdown_pct >= 0
     assert report.ulcer_index >= 0
+    assert report.market == "KRW-BTC"
+    assert all(trade.market == "KRW-BTC" for trade in report.trades)
 
 
 def test_run_ema_strategy_reports_risk_metrics():

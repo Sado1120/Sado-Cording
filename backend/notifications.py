@@ -1,6 +1,7 @@
 """Utility helpers for notifying Synology Chat or other webhook targets."""
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -95,6 +96,8 @@ def notify_synology_chat(
         return False
 
     payload = {"text": message}
+    form_payload = {"payload": json.dumps(payload, ensure_ascii=False)}
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     created_client = False
     if client is None:
         if httpx is None:  # dependency unavailable
@@ -104,8 +107,20 @@ def notify_synology_chat(
         created_client = True
 
     try:
-        response = client.post(url, json=payload, timeout=timeout)
+        response = client.post(url, data=form_payload, headers=headers, timeout=timeout)
         response.raise_for_status()
+        parsed: Optional[Any]
+        try:
+            parsed = response.json()
+        except Exception:  # pragma: no cover - non JSON response is allowed
+            parsed = None
+        if isinstance(parsed, dict):
+            success_flag = parsed.get("success")
+            if isinstance(success_flag, str):
+                success_flag = success_flag.lower() != "false"
+            if success_flag is False:
+                error_detail = parsed.get("error") or parsed.get("message") or "Synology Chat 응답 오류"
+                raise RuntimeError(str(error_detail))
         _record_attempt(success=True, message=message, error=None)
         return True
     except Exception as exc:  # pragma: no cover - network failures handled gracefully

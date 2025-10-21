@@ -2549,8 +2549,10 @@ function renderTrades(trades) {
 
   trades.forEach((trade) => {
     const row = document.createElement("tr");
+    const market = (trade.market || "-").toString().toUpperCase();
     row.innerHTML = `
       <td>${new Date(trade.entry_time).toLocaleDateString()}</td>
+      <td>${market}</td>
       <td>${new Date(trade.exit_time).toLocaleDateString()}</td>
       <td>${formatter.format(trade.entry_price)}</td>
       <td>${formatter.format(trade.exit_price)}</td>

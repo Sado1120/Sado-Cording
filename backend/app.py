@@ -389,6 +389,7 @@ def health() -> dict:
 @app.post("/strategies/simulate", response_model=SimulationResponse)
 def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
     candles: list[trading.Candle]
+    strategy_market: Optional[str] = payload.market.upper() if payload.market else None
 
     if payload.prices:
         candles = [
@@ -404,6 +405,7 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         ]
     elif payload.use_live_data or payload.market:
         market_code = (payload.market or "KRW-BTC").upper()
+        strategy_market = market_code
         interval = payload.interval or "minute60"
         try:
             market_data = fetch_upbit_candles(
@@ -423,6 +425,7 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
     try:
         report = trading.run_ema_strategy(
             candles,
+            market=strategy_market,
             fast_period=payload.fast_period,
             slow_period=payload.slow_period,
             initial_capital=payload.initial_capital,
@@ -446,6 +449,7 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
             return_pct=trade.return_pct,
             duration_bars=trade.duration_bars,
             exit_reason=trade.exit_reason,
+            market=trade.market,
         )
         for trade in report.trades
     ]
