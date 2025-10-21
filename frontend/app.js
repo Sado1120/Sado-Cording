@@ -23,6 +23,33 @@ const DEFAULT_CAPITAL_KRW = 20_000_000;
 const COLLAPSIBLE_SELECTOR = "[data-collapsible]";
 const COLLAPSIBLE_DEFAULT_LIMIT = 220;
 const collapsibleMetadata = new WeakMap();
+const AUTO_REFRESH_INTERVALS = Object.freeze({
+  blueprint: 600_000,
+  rebalance: 600_000,
+  aiPortfolio: 300_000,
+  copilot: 300_000,
+});
+
+const createAutoRunner = (fn, delay = 700) => {
+  let timerId;
+  return () => {
+    if (timerId) {
+      window.clearTimeout(timerId);
+    }
+    timerId = window.setTimeout(() => {
+      Promise.resolve(fn()).catch(() => {});
+    }, delay);
+  };
+};
+
+const startIntervalTask = (fn, interval, { immediate = false } = {}) => {
+  if (immediate) {
+    Promise.resolve(fn()).catch(() => {});
+  }
+  return window.setInterval(() => {
+    Promise.resolve(fn()).catch(() => {});
+  }, interval);
+};
 
 const shouldResetStoredBase = (value) => {
   if (!value) {
@@ -184,6 +211,8 @@ const marketSearchInput = document.getElementById("market-search");
 const marketResultsEl = document.getElementById("market-results");
 const marketBaseButtons = document.querySelectorAll("[data-market-base]");
 const marketGroupsEl = document.getElementById("market-groups");
+const navToggleBtn = document.getElementById("nav-toggle");
+const navLinksList = document.getElementById("global-nav-links");
 const toplinePaperHeartbeatEl = document.getElementById("topline-paper-heartbeat");
 const toplinePaperNoteEl = document.getElementById("topline-paper-note");
 const toplineAutopilotStatusEl = document.getElementById("topline-autopilot-status");
@@ -506,10 +535,13 @@ const copilotLogEl = document.getElementById("copilot-log");
 const diagnosticsListEl = document.getElementById("diagnostics-list");
 const diagnosticsRefreshBtn = document.getElementById("diagnostics-refresh");
 const backToTopBtn = document.getElementById("back-to-top");
+const blueprintForm = document.getElementById("blueprint-form");
 const blueprintStableInput = document.getElementById("blueprint-stable");
 const blueprintAggressiveInput = document.getElementById("blueprint-aggressive");
 const currentPositionsInput = document.getElementById("current-positions");
 const targetAllocationsInput = document.getElementById("target-allocations");
+const blueprintCapitalInput = document.getElementById("blueprint-capital");
+const portfolioValueInput = document.getElementById("portfolio-value");
 
 const DEFAULT_BLUEPRINT_STABLE = [
   {
@@ -1976,13 +2008,14 @@ const renderCopilotResponse = (payload) => {
   appendCopilotLog(payload);
 };
 
-const handleCopilot = async (event) => {
+const handleCopilot = async (event, options = {}) => {
   event?.preventDefault();
+  const { silent = false } = options;
   if (!copilotForm) return;
 
   const question = copilotQuestionInput?.value.trim();
   if (!question) {
-    if (copilotAnswerEl) {
+    if (!silent && copilotAnswerEl) {
       copilotAnswerEl.textContent = "먼저 코파일럿에게 질문을 입력해주세요.";
     }
     return;
@@ -2014,6 +2047,9 @@ const handleCopilot = async (event) => {
   } catch (error) {
     if (copilotAnswerEl) {
       copilotAnswerEl.textContent = `코파일럿 분석 실패: ${error.message}`;
+    }
+    if (!silent) {
+      console.error("Copilot request failed", error);
     }
   }
 };
@@ -2088,13 +2124,16 @@ const renderAiPortfolioPlan = (plan) => {
   }
 };
 
-const handleAiPortfolio = async (event) => {
+const handleAiPortfolio = async (event, options = {}) => {
   event?.preventDefault();
+  const { silent = false } = options;
   if (!aiPortfolioForm) return;
 
   const capital = Number(aiCapitalEl?.value || 0);
   if (!Number.isFinite(capital) || capital <= 0) {
-    alert("투자 자본을 올바르게 입력해주세요.");
+    if (!silent) {
+      alert("투자 자본을 올바르게 입력해주세요.");
+    }
     return;
   }
 
@@ -2123,7 +2162,11 @@ const handleAiPortfolio = async (event) => {
     });
     renderAiPortfolioPlan(plan);
   } catch (error) {
-    alert(error.message);
+    if (!silent) {
+      alert(error.message);
+    } else {
+      console.error("AI portfolio optimization failed", error);
+    }
   }
 };
 
@@ -2867,7 +2910,9 @@ const parseJsonInput = (elementId, description) => {
   }
 };
 
-async function handleRebalance() {
+async function handleRebalance(event, options = {}) {
+  event?.preventDefault();
+  const { silent = false } = options;
   let current;
   let target;
 
@@ -2875,13 +2920,21 @@ async function handleRebalance() {
     current = parseJsonInput("current-positions", "현재 포지션");
     target = parseJsonInput("target-allocations", "목표 비중");
   } catch (error) {
-    alert(error.message);
+    if (silent && rebalanceOutputEl) {
+      rebalanceOutputEl.textContent = error.message;
+    } else {
+      alert(error.message);
+    }
     return;
   }
 
-  const portfolioValue = Number(document.getElementById("portfolio-value").value);
+  const portfolioValue = Number(portfolioValueInput?.value ?? 0);
   if (!Number.isFinite(portfolioValue) || portfolioValue <= 0) {
-    alert("포트폴리오 가치를 올바르게 입력해주세요.");
+    if (silent && rebalanceOutputEl) {
+      rebalanceOutputEl.textContent = "포트폴리오 가치를 올바르게 입력해주세요.";
+    } else {
+      alert("포트폴리오 가치를 올바르게 입력해주세요.");
+    }
     return;
   }
 
@@ -2899,7 +2952,11 @@ async function handleRebalance() {
     });
     rebalanceOutputEl.textContent = JSON.stringify(data.orders, null, 2);
   } catch (error) {
-    alert(error.message);
+    if (silent && rebalanceOutputEl) {
+      rebalanceOutputEl.textContent = error.message;
+    } else {
+      alert(error.message);
+    }
   }
 }
 
@@ -3004,14 +3061,21 @@ const renderBlueprint = (plan) => {
   `;
 };
 
-async function handleBlueprint(event) {
+async function handleBlueprint(event, options = {}) {
   event?.preventDefault();
+  const { silent = false } = options;
 
-  const capital = Number(document.getElementById("blueprint-capital").value);
-  const riskProfile = Number(document.getElementById("blueprint-risk").value);
+  const capitalInput = blueprintCapitalInput || document.getElementById("blueprint-capital");
+  const capital = Number(capitalInput?.value ?? 0);
+  const riskInput = document.getElementById("blueprint-risk");
+  const riskProfile = Number(riskInput?.value ?? 0.5);
 
   if (!Number.isFinite(capital) || capital <= 0) {
-    alert("투자 자본을 올바르게 입력해주세요.");
+    if (silent && blueprintOutputEl) {
+      blueprintOutputEl.innerHTML = '<p class="error">투자 자본을 올바르게 입력해주세요.</p>';
+    } else {
+      alert("투자 자본을 올바르게 입력해주세요.");
+    }
     return;
   }
 
@@ -3021,7 +3085,11 @@ async function handleBlueprint(event) {
     stableAssets = parseAssetArray("blueprint-stable", "안정 자산");
     aggressiveAssets = parseAssetArray("blueprint-aggressive", "공격 자산");
   } catch (error) {
-    alert(error.message);
+    if (silent && blueprintOutputEl) {
+      blueprintOutputEl.innerHTML = `<p class="error">${error.message}</p>`;
+    } else {
+      alert(error.message);
+    }
     return;
   }
 
@@ -3040,7 +3108,11 @@ async function handleBlueprint(event) {
     });
     renderBlueprint(plan);
   } catch (error) {
-    alert(error.message);
+    if (silent && blueprintOutputEl) {
+      blueprintOutputEl.innerHTML = `<p class="error">${error.message}</p>`;
+    } else {
+      alert(error.message);
+    }
   }
 }
 
@@ -3163,6 +3235,9 @@ const handleLiveBalance = async () => {
   }
 };
 
+const scheduleBlueprintAuto = createAutoRunner(() => handleBlueprint(undefined, { silent: true }));
+const scheduleRebalanceAuto = createAutoRunner(() => handleRebalance(undefined, { silent: true }));
+
 marketSearchInput?.addEventListener("input", () => {
   renderMarketResults();
 });
@@ -3175,6 +3250,14 @@ marketBaseButtons.forEach((button) => {
     renderMarketResults();
     loadRecommendations({ base: selectedBaseCurrency }).catch(() => {});
   });
+});
+
+blueprintForm?.addEventListener("input", scheduleBlueprintAuto);
+blueprintForm?.addEventListener("change", scheduleBlueprintAuto);
+
+[currentPositionsInput, targetAllocationsInput, portfolioValueInput].forEach((element) => {
+  element?.addEventListener("input", scheduleRebalanceAuto);
+  element?.addEventListener("change", scheduleRebalanceAuto);
 });
 
 marketGroupsEl?.addEventListener("click", (event) => {
@@ -3291,6 +3374,19 @@ chatTestBtn?.addEventListener("click", (event) => {
   event.preventDefault();
   handleChatTest();
 });
+navToggleBtn?.addEventListener("click", () => {
+  const isOpen = navLinksList?.classList.toggle("is-open") ?? false;
+  navToggleBtn.setAttribute("aria-expanded", String(isOpen));
+});
+
+navLinksList?.addEventListener("click", (event) => {
+  if (!navLinksList.classList.contains("is-open")) return;
+  const link = event.target.closest("a");
+  if (link) {
+    navLinksList.classList.remove("is-open");
+    navToggleBtn?.setAttribute("aria-expanded", "false");
+  }
+});
 aiRefreshBtn?.addEventListener("click", () => {
   refreshMarketIntelligence().catch(() => {});
 });
@@ -3318,8 +3414,28 @@ refreshLiveMarket().catch(() => {});
 refreshMarketIntelligence().catch(() => {});
 refreshDiagnostics().catch(() => {});
 handleAiPortfolio().catch(() => {});
+handleBlueprint(undefined, { silent: true }).catch(() => {});
+handleRebalance(undefined, { silent: true }).catch(() => {});
 refreshNews().catch(() => {});
 handleCopilot().catch(() => {});
+startIntervalTask(
+  () => handleBlueprint(undefined, { silent: true }),
+  AUTO_REFRESH_INTERVALS.blueprint
+);
+startIntervalTask(
+  () => handleRebalance(undefined, { silent: true }),
+  AUTO_REFRESH_INTERVALS.rebalance
+);
+startIntervalTask(
+  () => handleAiPortfolio(undefined, { silent: true }),
+  AUTO_REFRESH_INTERVALS.aiPortfolio
+);
+startIntervalTask(() => {
+  if (copilotQuestionInput?.value.trim()) {
+    return handleCopilot(undefined, { silent: true });
+  }
+  return undefined;
+}, AUTO_REFRESH_INTERVALS.copilot);
 setInterval(() => {
   refreshLiveMarket().catch(() => {});
 }, 60_000);

@@ -1,10 +1,11 @@
 """Utility helpers for notifying Synology Chat or other webhook targets."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 try:  # pragma: no cover - optional dependency during import
@@ -17,6 +18,7 @@ _last_attempt_at: Optional[datetime] = None
 _last_success_at: Optional[datetime] = None
 _last_error: Optional[str] = None
 _last_message: Optional[str] = None
+_change_digests: Dict[str, str] = {}
 
 
 def _clean_webhook_url(raw: Optional[str]) -> str:
@@ -129,6 +131,34 @@ def notify_synology_chat(
     finally:
         if created_client:
             client.close()
+
+
+def notify_synology_chat_on_change(
+    key: str,
+    message: str,
+    *,
+    webhook_url: Optional[str] = None,
+) -> bool:
+    """Send ``message`` when it differs from the last payload for ``key``.
+
+    The helper is best-effort: it quietly skips delivery if no webhook URL is
+    configured and only forwards the notification when the content actually
+    changed so Synology Chat 채널이 중복 메시지로 과부하되지 않는다.
+    """
+
+    url = _resolve_webhook_url(webhook_url)
+    if not url:
+        return False
+
+    digest = hashlib.sha256(message.encode("utf-8", "ignore")).hexdigest()
+    previous = _change_digests.get(key)
+    if previous == digest:
+        return False
+
+    sent = notify_synology_chat(message, webhook_url=url)
+    if sent:
+        _change_digests[key] = digest
+    return sent
 
 
 def get_synology_chat_status() -> dict:

@@ -16,6 +16,7 @@ def reset_chat_state():
     notifications._last_success_at = None  # type: ignore[attr-defined]
     notifications._last_error = None  # type: ignore[attr-defined]
     notifications._last_message = None  # type: ignore[attr-defined]
+    notifications._change_digests.clear()  # type: ignore[attr-defined]
 
 
 def test_notify_synology_chat_with_stub_client(monkeypatch):
@@ -118,3 +119,24 @@ def test_chat_notification_failure_returns_detail(monkeypatch):
 
     assert exc.value.status_code == 502
     assert "timeout" in exc.value.detail
+
+
+def test_notify_on_change_deduplicates(monkeypatch):
+    reset_chat_state()
+    sent: list[str] = []
+
+    def fake_notify(message: str, **_kwargs):
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(notifications, "notify_synology_chat", fake_notify)
+    monkeypatch.setenv("SADO_CHAT_WEBHOOK", "https://example.com/webhook")
+
+    first = notifications.notify_synology_chat_on_change("market", "KRW-BTC 매수 집중")
+    second = notifications.notify_synology_chat_on_change("market", "KRW-BTC 매수 집중")
+    third = notifications.notify_synology_chat_on_change("market", "KRW-ETH 관망")
+
+    assert first is True
+    assert second is False
+    assert third is True
+    assert sent == ["KRW-BTC 매수 집중", "KRW-ETH 관망"]

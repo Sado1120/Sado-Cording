@@ -27,7 +27,17 @@
   <body id="top">
     <nav class="global-nav" aria-label="주요 패널 바로가기">
       <div class="global-nav__brand">Sado Trade Bot</div>
-      <ul class="global-nav__links">
+      <button
+        class="global-nav__toggle"
+        id="nav-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="global-nav-links"
+      >
+        <span class="global-nav__toggle-icon">☰</span>
+        <span class="global-nav__toggle-label">메뉴</span>
+      </button>
+      <ul class="global-nav__links" id="global-nav-links">
         <li>
           <a href="#panel-topline" title="요약 현황"><span aria-hidden="true">📊</span><span>요약</span></a>
         </li>

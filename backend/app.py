@@ -201,6 +201,139 @@ def _sanitize_allocation(allocation: ai.PortfolioAllocation) -> dict:
     }
 
 
+def _get_value(obj: object, key: str, default: float | str | None = None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _summarise_recommendations_for_chat(
+    payload: MarketRecommendationsResponse,
+) -> Optional[str]:
+    base = payload.base_currency.upper()
+    interval = payload.interval
+    head = list(payload.recommendations[:3])
+    label_map = {"upbit": "실거래", "synthetic": "합성", "mixed": "혼합"}
+    source_label = label_map.get(payload.analysis_source, payload.analysis_source)
+
+    if not head:
+        if payload.errors:
+            return f"[AI 추천] {base}/{interval} 오류: {payload.errors[0]}"
+        return f"[AI 추천] {base}/{interval} 추천 결과 없음"
+
+    entries = []
+    for item in head:
+        entries.append(
+            f"{item.market} {item.recommended_action} (신뢰 {item.confidence_pct:.1f}%, 점수 {item.score:.1f})"
+        )
+
+    summary = ", ".join(entries)
+    if payload.errors:
+        summary += f" · 경고 {payload.errors[0]}"
+    return f"[AI 추천] {base}/{interval} {source_label}: {summary}"
+
+
+def _summarise_market_intelligence_for_chat(payload: MarketAIResponse) -> Optional[str]:
+    return (
+        f"[시장 인텔리전스] {payload.market} {payload.interval}: {payload.recommended_action} "
+        f"(신뢰 {payload.confidence_pct:.1f}%, 레짐 {payload.regime})"
+    )
+
+
+def _summarise_portfolio_plan_for_chat(
+    payload: PortfolioOptimizationResponse,
+) -> Optional[str]:
+    if not payload.allocations:
+        return None
+
+    head = payload.allocations[:3]
+    parts = []
+    for allocation in head:
+        symbol = _get_value(allocation, "symbol", "-")
+        weight = _safe_number(_get_value(allocation, "weight", 0.0), lower=0.0, upper=1.0) * 100
+        parts.append(f"{symbol} {weight:.1f}%")
+
+    return (
+        f"[AI 포트폴리오] {payload.risk_profile_label}: 기대수익 {payload.expected_return_pct:.2f}% · "
+        f"변동성 {payload.expected_volatility_pct:.2f}% | "
+        + ", ".join(parts)
+    )
+
+
+def _summarise_blueprint_for_chat(payload: PortfolioBlueprintResponse) -> Optional[str]:
+    if not payload.allocations:
+        return None
+
+    stable_pct = float(payload.summary.bucket_weights_pct.get("stable", 0.0))
+    aggressive_pct = float(payload.summary.bucket_weights_pct.get("aggressive", 0.0))
+    entries = [
+        f"{allocation.symbol} {allocation.weight_pct:.1f}%"
+        for allocation in payload.allocations[:3]
+    ]
+
+    return (
+        f"[포트폴리오 블루프린트] 안정 {stable_pct:.1f}% · 공격 {aggressive_pct:.1f}% | "
+        + ", ".join(entries)
+    )
+
+
+def _summarise_rebalance_for_chat(payload: RebalanceResponse) -> Optional[str]:
+    if not payload.orders:
+        return "[리밸런싱] 조정 필요 없음"
+
+    ranked = sorted(payload.orders.items(), key=lambda item: abs(item[1]), reverse=True)
+    top = []
+    for symbol, amount in ranked[:3]:
+        rounded = round(float(amount))
+        if rounded == 0:
+            continue
+        prefix = "+" if rounded > 0 else ""
+        top.append(f"{symbol} {prefix}{rounded:,} KRW")
+
+    if not top:
+        return "[리밸런싱] 조정 필요 없음"
+    return "[리밸런싱] " + ", ".join(top)
+
+
+def _summarise_copilot_for_chat(payload: CopilotResponse) -> Optional[str]:
+    plan = payload.autopilot
+    highlight = (payload.summary_points[0] if payload.summary_points else payload.answer).strip()
+    if len(highlight) > 80:
+        highlight = highlight[:77] + "..."
+    return (
+        f"[AI 코파일럿] {plan.market} {plan.side.upper()} ({plan.bias}) · 신뢰 {plan.confidence_pct:.1f}% · "
+        f"포지션 {plan.position_size_pct:.1f}% - {highlight}"
+    )
+
+
+def _summarise_autopilot_status_for_chat(payload: AutoPilotStatusResponse) -> Optional[str]:
+    status = "ON" if payload.running else "OFF"
+    parts = [status]
+    if payload.config:
+        parts.append(f"시장 {payload.config.market} · 모드 {payload.config.mode.upper()}")
+    if payload.last_plan:
+        parts.append(
+            f"플랜 {payload.last_plan.market} {payload.last_plan.side.upper()} ({payload.last_plan.bias}) "
+            f"신뢰 {payload.last_plan.confidence_pct:.1f}%"
+        )
+    if payload.last_execution:
+        parts.append(
+            f"최근 체결 {payload.last_execution.market} {payload.last_execution.side.upper()} "
+            f"{payload.last_execution.volume:.4f} @ {payload.last_execution.price:.0f}"
+        )
+    if payload.last_error:
+        parts.append(f"경고 {payload.last_error}")
+
+    if not parts:
+        return None
+    return "[오토파일럿] " + " | ".join(parts)
+
+
+def _push_chat_summary(key: str, message: Optional[str]) -> None:
+    if message:
+        notifications.notify_synology_chat_on_change(key, message)
+
+
 def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse:
     config_payload = None
     if state.config:
@@ -346,19 +479,25 @@ def _serialize_balance(snapshot) -> PaperBalancePayload:
 @app.get("/trading/autopilot/status", response_model=AutoPilotStatusResponse)
 def get_autopilot_status() -> AutoPilotStatusResponse:
     state = _auto_trader.status()
-    return _autopilot_status_payload(state)
+    response = _autopilot_status_payload(state)
+    _push_chat_summary("autopilot-status", _summarise_autopilot_status_for_chat(response))
+    return response
 
 
 @app.post("/trading/autopilot/start", response_model=AutoPilotStatusResponse)
 def start_autopilot(payload: AutoPilotConfigRequest) -> AutoPilotStatusResponse:
     state = _auto_trader.start(_build_autopilot_config(payload))
-    return _autopilot_status_payload(state)
+    response = _autopilot_status_payload(state)
+    _push_chat_summary("autopilot-status", _summarise_autopilot_status_for_chat(response))
+    return response
 
 
 @app.post("/trading/autopilot/stop", response_model=AutoPilotStatusResponse)
 def stop_autopilot() -> AutoPilotStatusResponse:
     state = _auto_trader.stop()
-    return _autopilot_status_payload(state)
+    response = _autopilot_status_payload(state)
+    _push_chat_summary("autopilot-status", _summarise_autopilot_status_for_chat(response))
+    return response
 
 
 @app.post("/notifications/chat")
@@ -793,7 +932,7 @@ def get_market_recommendations(
     include_warnings: bool = False,
 ) -> MarketRecommendationsResponse:
     try:
-        return _compute_market_recommendations(
+        response = _compute_market_recommendations(
             base=base,
             interval=interval,
             limit=limit,
@@ -802,12 +941,15 @@ def get_market_recommendations(
         )
     except Exception as exc:  # pragma: no cover - defensive fallback
         error_message = f"내부 추천 엔진 오류: {exc}"
-        return _empty_market_recommendations(
+        response = _empty_market_recommendations(
             base=base,
             interval=interval,
             limit=limit,
             error=error_message,
         )
+
+    _push_chat_summary("market-recommendations", _summarise_recommendations_for_chat(response))
+    return response
 
 
 @app.get("/market/upbit/candles", response_model=MarketCandlesResponse)
@@ -908,7 +1050,7 @@ def get_market_intelligence(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return MarketAIResponse(
+    response = MarketAIResponse(
         market=insight.market,
         interval=insight.interval,
         regime=insight.regime,
@@ -926,6 +1068,12 @@ def get_market_intelligence(
         ),
         institutional_commentary=insight.institutional_commentary,
     )
+
+    _push_chat_summary(
+        "market-intelligence",
+        _summarise_market_intelligence_for_chat(response),
+    )
+    return response
 
 
 @app.get("/market/news", response_model=NewsResponse)
@@ -1176,7 +1324,7 @@ def optimize_portfolio(payload: PortfolioOptimizationRequest) -> PortfolioOptimi
     except (MarketDataError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PortfolioOptimizationResponse(
+    response = PortfolioOptimizationResponse(
         generated_at=plan.generated_at,
         risk_profile_label=plan.risk_profile_label,
         risk_appetite=plan.risk_appetite,
@@ -1190,6 +1338,9 @@ def optimize_portfolio(payload: PortfolioOptimizationRequest) -> PortfolioOptimi
         methodology=plan.methodology,
         market_briefings=plan.market_briefings,
     )
+
+    _push_chat_summary("ai-portfolio", _summarise_portfolio_plan_for_chat(response))
+    return response
 
 
 @app.post("/ai/copilot", response_model=CopilotResponse)
@@ -1273,7 +1424,7 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
         institutional_commentary=insight.institutional_commentary,
     )
 
-    return CopilotResponse(
+    response = CopilotResponse(
         generated_at=synthesis.generated_at,
         answer=synthesis.answer,
         summary_points=synthesis.summary_points,
@@ -1284,6 +1435,9 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
         insight=insight_payload,
         news=_news_items(insight.news),
     )
+
+    _push_chat_summary("ai-copilot", _summarise_copilot_for_chat(response))
+    return response
 
 
 @app.post("/trading/order", response_model=OrderResponse)
@@ -1422,7 +1576,9 @@ def rebalance_portfolio(payload: RebalanceRequest) -> RebalanceResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return RebalanceResponse(orders=orders)
+    response = RebalanceResponse(orders=orders)
+    _push_chat_summary("portfolio-rebalance", _summarise_rebalance_for_chat(response))
+    return response
 
 
 @app.post("/portfolio/blueprint", response_model=PortfolioBlueprintResponse)
@@ -1439,7 +1595,9 @@ def build_portfolio_blueprint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PortfolioBlueprintResponse(**plan)
+    response = PortfolioBlueprintResponse(**plan)
+    _push_chat_summary("portfolio-blueprint", _summarise_blueprint_for_chat(response))
+    return response
 
 
 @app.get("/prices/synthetic", response_model=list[CandlePayload])

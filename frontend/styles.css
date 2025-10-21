@@ -55,6 +55,34 @@ body {
   justify-content: flex-end;
 }
 
+.global-nav__toggle {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(122, 225, 255, 0.24);
+  background: rgba(122, 225, 255, 0.12);
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.global-nav__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.global-nav__toggle-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.global-nav__toggle-label {
+  font-size: 0.95rem;
+}
+
 .global-nav__links a {
   display: inline-flex;
   align-items: center;
@@ -2032,37 +2060,52 @@ tbody tr:hover {
 
 @media (max-width: 900px) {
   .global-nav {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.85rem;
-    padding: 0.9rem 6vw;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 6vw;
+  }
+
+  .global-nav__brand {
+    font-size: 1.08rem;
+  }
+
+  .global-nav__toggle {
+    display: inline-flex;
   }
 
   .global-nav__links {
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 0.4rem;
-    justify-content: flex-start;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.2rem 0 0.6rem;
+  }
+
+  .global-nav__links.is-open {
+    display: flex;
   }
 
   .global-nav__links a {
-    flex-shrink: 0;
+    justify-content: space-between;
   }
 
   .hero {
-    padding: 3.8rem 6vw 3rem;
+    padding: 3.9rem 6vw 3rem;
   }
 
   .dashboard {
     padding: 0 6vw 4rem;
+    gap: 2.2rem;
   }
 
   .panel {
-    padding: 1.6rem;
+    padding: 1.65rem;
   }
 
   .panel--topline {
-    padding: 2rem;
+    padding: 1.9rem;
   }
 
   .panel--execution .execution-grid,
@@ -2098,26 +2141,77 @@ tbody tr:hover {
   }
 }
 
+@media (max-width: 768px) {
+  .hero {
+    padding: 3.2rem 5vw 2.6rem;
+  }
+
+  .hero__content {
+    gap: 1.2rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+  }
+
+  .panel--topline {
+    padding: 2rem;
+  }
+
+  .topline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topline-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .metric-grid--topline {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .topline-status {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .dashboard {
+    gap: 2rem;
+  }
+}
+
 @media (max-width: 600px) {
   :root {
     font-size: 15px;
   }
 
+  .global-nav {
+    padding: 0.75rem 1.25rem;
+  }
+
+  .global-nav__toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
   .hero {
-    padding: 3.2rem 5vw 2.6rem;
+    padding: 2.8rem 1.3rem 2.2rem;
   }
 
   .hero__cta {
     flex-direction: column;
+    gap: 0.85rem;
   }
 
   .dashboard {
-    padding: 0 5vw 3.5rem;
-    gap: 2rem;
+    padding: 0 1.3rem 2.8rem;
+    gap: 1.8rem;
   }
 
   .panel {
     border-radius: 20px;
+    padding: 1.4rem;
   }
 
   .topline-card,
@@ -2126,7 +2220,7 @@ tbody tr:hover {
   .copilot-card,
   .copilot-form,
   .ai-portfolio-form {
-    padding: 1.2rem;
+    padding: 1.1rem;
   }
 
   .metric-card,
@@ -2156,6 +2250,37 @@ tbody tr:hover {
   }
 }
 
+@media (max-width: 520px) {
+  .hero {
+    padding: 2.6rem 1.6rem 2.1rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.6rem, 10vw, 3.3rem);
+  }
+
+  .panel--topline,
+  .topline-card {
+    padding: 1.2rem;
+  }
+
+  .topline-status {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid--topline {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-card {
+    align-items: flex-start;
+  }
+
+  .metric-value {
+    font-size: 1.5rem;
+  }
+}
+
 @media (max-width: 430px) {
   :root {
     font-size: 14px;
@@ -2169,11 +2294,23 @@ tbody tr:hover {
     font-size: 1rem;
   }
 
+  .global-nav__links a {
+    font-size: 0.9rem;
+  }
+
   .btn,
   .btn--primary,
   .btn--accent,
   .btn--ghost {
     width: 100%;
+  }
+
+  .topline-status {
+    grid-template-columns: 1fr;
+  }
+
+  .topline-card {
+    padding: 1rem;
   }
 
   .status-card pre,
