@@ -205,12 +205,33 @@ def _rsi(values: Sequence[float], period: int = 14) -> float:
 
 
 def _macd(values: Sequence[float]) -> Tuple[float, float, float]:
-    fast = _ema(values, 12)
-    slow = _ema(values, 26)
-    macd_value = fast - slow
-    signal = _ema([macd_value] + list(values[-9:]), 9)
+    """Calculate MACD, signal, and histogram using full EMA series."""
+
+    if not values:
+        return 0.0, 0.0, 0.0
+
+    ema_fast_series: List[float] = []
+    ema_slow_series: List[float] = []
+
+    fast = float(values[0])
+    slow = float(values[0])
+    fast_multiplier = 2 / (12 + 1)
+    slow_multiplier = 2 / (26 + 1)
+
+    for price in values:
+        fast = (price - fast) * fast_multiplier + fast
+        slow = (price - slow) * slow_multiplier + slow
+        ema_fast_series.append(fast)
+        ema_slow_series.append(slow)
+
+    macd_series = [fast_val - slow_val for fast_val, slow_val in zip(ema_fast_series, ema_slow_series)]
+    if not macd_series:
+        return 0.0, 0.0, 0.0
+
+    macd_value = macd_series[-1]
+    signal = _ema(macd_series, 9)
     histogram = macd_value - signal
-    return macd_value, signal, histogram
+    return float(macd_value), float(signal), float(histogram)
 
 
 def _annualised_volatility(returns: Sequence[float], interval: str) -> float:

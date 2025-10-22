@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Tuple
 
 from . import ai
 from .execution import ExecutionError, PaperBroker, create_upbit_client_from_env
@@ -74,6 +74,7 @@ class AutoTraderState:
     last_recommendation_source: Optional[str] = None
     executions: List[AutoTraderExecution] = field(default_factory=list)
     last_skip_reason: Optional[str] = None
+    recommendation_markets: List[str] = field(default_factory=list)
 
 
 class AutoTrader:
@@ -163,6 +164,7 @@ class AutoTrader:
                 last_recommendation_source=self._state.last_recommendation_source,
                 executions=list(self._state.executions),
                 last_skip_reason=self._state.last_skip_reason,
+                recommendation_markets=list(self._state.recommendation_markets),
             )
         return snapshot
 
@@ -225,7 +227,7 @@ class AutoTrader:
             self._state.last_cycle_started_at = self._time_provider()
 
         try:
-            market_code = self._resolve_market(config)
+            market_code, candidate_markets = self._resolve_market(config)
         except Exception as exc:  # pragma: no cover - defensive guard
             friendly_error = f"추천 엔진 오류: {exc}"
             self._append_log("error", friendly_error)
@@ -242,55 +244,100 @@ class AutoTrader:
         self._set_skip_reason(None)
 
         try:
-            market_data = self._candle_fetcher(
-                market=market_code,
-                interval=config.interval,
-                count=200,
-            )
-            candles = market_data.candles
-            if not candles:
-                raise MarketDataError("캔들 데이터가 비어 있습니다.")
+            snapshot = self._broker.snapshot()
+            news_feed = self._safe_news()
+            candidate_markets = candidate_markets or [market_code]
 
-            last_close = candles[-1].close
-            news = self._safe_news()
-            insight = self._analyse_market(
-                candles,
-                market=market_code,
-                interval=config.interval,
-                news=news,
-            )
+            selected_plan: Optional[ai.AutoPilotOrderPlan] = None
+            selected_insight: Optional[ai.MarketAIInsight] = None
+            selected_portfolio = None
+            selected_candles: List[Candle] = []
+            selected_last_close = 0.0
+            selected_market = market_code
+            last_candidate_error: Optional[Exception] = None
 
-            portfolio_plan = None
-            if config.include_portfolio:
+            for index, candidate in enumerate(candidate_markets):
                 try:
-                    portfolio_plan = self._portfolio_builder(
+                    market_data = self._candle_fetcher(
+                        market=candidate,
+                        interval=config.interval,
+                        count=200,
+                    )
+                    candles = market_data.candles
+                    if not candles:
+                        raise MarketDataError("캔들 데이터가 비어 있습니다.")
+
+                    last_close = candles[-1].close
+                    insight = self._analyse_market(
+                        candles,
+                        market=candidate,
+                        interval=config.interval,
+                        news=news_feed,
+                    )
+
+                    portfolio_plan = None
+                    if config.include_portfolio:
+                        try:
+                            portfolio_plan = self._portfolio_builder(
+                                risk_appetite=config.risk_appetite,
+                                capital=config.capital,
+                                include_cash=True,
+                                preferred_markets=[candidate],
+                                candle_fetcher=self._candle_fetcher,
+                            )
+                        except Exception as exc:  # pragma: no cover - optional enhancement
+                            self._append_log("warning", f"포트폴리오 계산 실패: {exc}")
+
+                    autopilot_plan = self._autopilot_builder(
+                        insight=insight,
                         risk_appetite=config.risk_appetite,
                         capital=config.capital,
-                        include_cash=True,
-                        preferred_markets=[market_code],
-                        candle_fetcher=self._candle_fetcher,
+                        mode=config.mode,
+                        portfolio_plan=portfolio_plan,
                     )
-                except Exception as exc:  # pragma: no cover - optional enhancement
-                    self._append_log("warning", f"포트폴리오 계산 실패: {exc}")
+                except (MarketDataError, ValueError) as exc:
+                    last_candidate_error = exc
+                    self._append_log("warning", f"{candidate} 분석 실패: {exc}")
+                    continue
 
-            autopilot_plan = self._autopilot_builder(
-                insight=insight,
-                risk_appetite=config.risk_appetite,
-                capital=config.capital,
-                mode=config.mode,
-                portfolio_plan=portfolio_plan,
-            )
+                if self._should_try_next_candidate(
+                    plan=autopilot_plan,
+                    config=config,
+                    snapshot=snapshot,
+                    has_more_candidates=index + 1 < len(candidate_markets),
+                ):
+                    continue
+
+                selected_plan = autopilot_plan
+                selected_insight = insight
+                selected_portfolio = portfolio_plan
+                selected_candles = candles
+                selected_last_close = last_close
+                selected_market = candidate
+                break
+
+            if selected_plan is None:
+                if last_candidate_error is not None:
+                    raise last_candidate_error
+                raise MarketDataError("실행 가능한 추천을 찾지 못했습니다.")
+
+            if selected_market != market_code:
+                market_code = selected_market
+                with self._lock:
+                    if self._config:
+                        self._config.market = selected_market
+                        self._state.config = self._config
 
             execution = self._maybe_execute(
                 config=config,
-                plan=autopilot_plan,
-                candles=candles,
-                last_close=last_close,
+                plan=selected_plan,
+                candles=selected_candles,
+                last_close=selected_last_close,
             )
 
             with self._lock:
-                self._state.last_plan = autopilot_plan
-                self._state.last_insight = insight
+                self._state.last_plan = selected_plan
+                self._state.last_insight = selected_insight
                 if execution:
                     self._state.last_execution = execution
                     self._state.executions.append(execution)
@@ -313,8 +360,8 @@ class AutoTrader:
                     "long": "롱",
                     "short": "숏",
                     "neutral": "관망",
-                }.get(autopilot_plan.bias, autopilot_plan.bias)
-                self._append_log("info", f"{autopilot_plan.market} 분석 완료: {bias_label} 전략")
+                }.get(selected_plan.bias, selected_plan.bias)
+                self._append_log("info", f"{selected_plan.market} 분석 완료: {bias_label} 전략")
 
         except (MarketDataError, ExecutionError, ValueError) as exc:
             with self._lock:
@@ -347,6 +394,50 @@ class AutoTrader:
             return self._news_fetcher(4)
         except Exception:  # pragma: no cover - network failures
             return []
+
+    def _has_position(self, snapshot, market: str) -> bool:
+        market_upper = market.upper()
+        for position in getattr(snapshot, "positions", []):
+            try:
+                if position.market.upper() == market_upper and position.volume > 0:
+                    return True
+            except AttributeError:
+                continue
+        return False
+
+    def _should_try_next_candidate(
+        self,
+        *,
+        plan: ai.AutoPilotOrderPlan,
+        config: AutoTraderConfig,
+        snapshot,
+        has_more_candidates: bool,
+    ) -> bool:
+        if not has_more_candidates or not config.auto_select_market:
+            return False
+
+        if plan.side == "ask" and not self._has_position(snapshot, plan.market):
+            self._append_log(
+                "info",
+                f"{plan.market} 매도 신호이지만 보유 수량이 없어 다음 추천을 확인합니다.",
+            )
+            return True
+
+        if plan.side == "flat":
+            self._append_log("info", f"{plan.market} 관망 신호로 다음 후보를 탐색합니다.")
+            return True
+
+        if plan.confidence_pct < config.min_confidence_pct:
+            self._append_log(
+                "info",
+                (
+                    f"{plan.market} 신뢰도 {plan.confidence_pct:.1f}%가 "
+                    f"기준 {config.min_confidence_pct:.1f}% 미만입니다. 다음 추천을 확인합니다."
+                ),
+            )
+            return True
+
+        return False
 
     def _maybe_execute(
         self,
@@ -470,16 +561,18 @@ class AutoTrader:
     # ------------------------------------------------------------------
     # Recommendation support
     # ------------------------------------------------------------------
-    def _resolve_market(self, config: AutoTraderConfig) -> str:
+    def _resolve_market(self, config: AutoTraderConfig) -> Tuple[str, List[str]]:
         market_code = (config.market or "KRW-BTC").upper()
         recommendations: List[str] = []
         source: Optional[str] = None
+        candidate_markets: List[str] = [market_code]
 
         if not config.auto_select_market or not self._recommendation_scanner:
             with self._lock:
                 self._state.last_recommendations = recommendations
                 self._state.last_recommendation_source = source
-            return market_code
+                self._state.recommendation_markets = candidate_markets
+            return market_code, candidate_markets
 
         scan_limit = max(5, min(int(config.recommendation_max_markets or 40), 120))
 
@@ -496,7 +589,8 @@ class AutoTrader:
             with self._lock:
                 self._state.last_recommendations = []
                 self._state.last_recommendation_source = None
-            return market_code
+                self._state.recommendation_markets = candidate_markets
+            raise MarketDataError(str(exc)) from exc
 
         top_market = market_code
         try:
@@ -527,6 +621,8 @@ class AutoTrader:
             except (TypeError, ValueError):
                 pass
             formatted.append(" · ".join(label_parts))
+            if market_name not in candidate_markets:
+                candidate_markets.append(market_name)
             if formatted and top_market == market_code:
                 top_market = market_name
 
@@ -547,6 +643,9 @@ class AutoTrader:
         if top_market != market_code:
             self._append_log("info", f"AI 추천 종목으로 전환: {top_market}")
             market_code = top_market
+            candidate_markets = [top_market] + [
+                code for code in candidate_markets if code != top_market
+            ]
             with self._lock:
                 if self._config:
                     self._config.market = top_market
@@ -555,8 +654,9 @@ class AutoTrader:
         with self._lock:
             self._state.last_recommendations = formatted[:5]
             self._state.last_recommendation_source = source
+            self._state.recommendation_markets = candidate_markets[:10]
 
-        return market_code
+        return market_code, candidate_markets
 
     def _execute_live(
         self,

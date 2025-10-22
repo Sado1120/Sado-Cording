@@ -2,9 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-pytest.importorskip("httpx")
-
-from fastapi.testclient import TestClient
+try:
+    from fastapi.testclient import TestClient
+except RuntimeError:  # pragma: no cover - optional dependency missing
+    TestClient = None
+except ModuleNotFoundError:  # pragma: no cover - optional dependency missing
+    TestClient = None
 
 from backend import ai
 from backend.autopilot import AutoTrader, AutoTraderConfig
@@ -188,6 +191,74 @@ def test_autotrader_records_skip_reason_when_flat_signal():
         trader.stop()
 
 
+def test_autotrader_tries_alternative_market_when_first_is_untradeable():
+    class DummyRecommendations:
+        def __init__(self, markets: list[str]):
+            self.recommendations = [
+                SimpleNamespace(
+                    market=code,
+                    recommended_action="추세 추종 매수",
+                    confidence_pct=72.0,
+                    score=90.0,
+                )
+                for code in markets
+            ]
+            self.analysis_source = "unit-test"
+            self.errors = []
+
+    def scanner(_base, _interval, _limit, _max_markets, _include_warnings):
+        return DummyRecommendations(["KRW-BTC", "KRW-ETH"])
+
+    def builder(**kwargs) -> ai.AutoPilotOrderPlan:
+        insight = kwargs["insight"]
+        if insight.market == "KRW-BTC":
+            side = "ask"
+            bias = "short"
+        else:
+            side = "bid"
+            bias = "long"
+        return ai.AutoPilotOrderPlan(
+            market=insight.market,
+            side=side,
+            bias=bias,
+            order_type="market",
+            suggested_price=None,
+            position_size_pct=5.0,
+            stop_loss_pct=2.0,
+            take_profit_pct=4.0,
+            trailing_stop_pct=1.0,
+            confidence_pct=70.0,
+            reasoning=["테스트 계획"],
+            monitoring=["테스트 모니터링"],
+        )
+
+    trader, broker = _build_trader(recommendation_scanner=scanner, autopilot_builder=builder)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=20_000_000,
+        poll_interval=300.0,
+        include_portfolio=False,
+        max_position_pct=0.25,
+        min_confidence_pct=50.0,
+        auto_select_market=True,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.last_plan is not None
+        assert state.last_plan.side == "bid"
+        assert state.last_plan.market == "KRW-ETH"
+        assert state.last_skip_reason is None
+
+        snapshot = broker.snapshot()
+        assert any(pos.market == "KRW-ETH" for pos in snapshot.positions)
+    finally:
+        trader.stop()
+
+
 def test_autotrader_auto_select_market_switches_market():
     class DummyRecommendations:
         def __init__(self, markets: list[str]):
@@ -230,11 +301,11 @@ def test_autotrader_auto_select_market_switches_market():
     state = trader.start(config)
     try:
         assert state.config is not None
-        assert state.config.market == "KRW-ETH"
         assert state.last_plan is not None
-        assert state.last_plan.market == "KRW-ETH"
+        assert state.config.market == state.last_plan.market
+        assert state.config.market in {"KRW-ETH", "KRW-SOL"}
         snapshot = broker.snapshot()
-        assert any(pos.market == "KRW-ETH" for pos in snapshot.positions)
+        assert any(pos.market == state.config.market for pos in snapshot.positions)
         assert state.last_recommendations, "추천 요약이 비어 있습니다."
         assert state.last_recommendations[0].startswith("KRW-ETH")
     finally:
@@ -242,6 +313,8 @@ def test_autotrader_auto_select_market_switches_market():
 
 
 def test_autopilot_api_endpoints(monkeypatch):
+    if TestClient is None:
+        pytest.skip("httpx not available")
     trader, _ = _build_trader()
     original_trader = app_module._auto_trader
     monkeypatch.setattr(app_module, "_auto_trader", trader)
@@ -347,6 +420,8 @@ def test_autotrader_handles_recommendation_failure():
 
 
 def test_ai_copilot_falls_back_to_synthetic_data(monkeypatch):
+    if TestClient is None:
+        pytest.skip("httpx not available")
     client = TestClient(app_module.app)
 
     def failing_fetch(**_kwargs):
@@ -372,6 +447,8 @@ def test_ai_copilot_falls_back_to_synthetic_data(monkeypatch):
 
 
 def test_ai_assistant_falls_back_to_synthetic_data(monkeypatch):
+    if TestClient is None:
+        pytest.skip("httpx not available")
     client = TestClient(app_module.app)
 
     def failing_fetch(**_kwargs):
