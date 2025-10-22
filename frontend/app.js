@@ -1700,7 +1700,7 @@ const refreshMarketIntelligence = async (marketOverride, intervalOverride) => {
 const setAutopilotBadge = (bias) => {
   if (!autopilotBiasEl) return;
   autopilotBiasEl.classList.remove("badge--long", "badge--short", "badge--neutral");
-  let label = "대기";
+  let label = "관망";
   let badgeClass = "badge--neutral";
   if (bias === "long") {
     label = "롱 바이어스";
@@ -1714,7 +1714,20 @@ const setAutopilotBadge = (bias) => {
 };
 
 const renderAutopilotPlan = (plan) => {
-  if (!plan || !autopilotSideEl) return;
+  if (!autopilotSideEl) return;
+
+  if (!plan) {
+    setAutopilotBadge("neutral");
+    autopilotSideEl.textContent = "관망";
+    autopilotConfidenceEl.textContent = "-";
+    autopilotSizeEl.textContent = "-";
+    autopilotStopsEl.textContent = "- / -";
+    autopilotTrailingEl.textContent = "-";
+    renderList(autopilotReasoningEl, [], "자동 신호를 수집하고 있습니다.");
+    renderList(autopilotMonitoringEl, [], "시장 데이터를 준비 중입니다.");
+    return;
+  }
+
   setAutopilotBadge(plan.bias);
   autopilotSideEl.textContent =
     plan.side === "bid" ? "매수" : plan.side === "ask" ? "매도" : "관망";
@@ -1803,6 +1816,8 @@ const renderAutopilotStatus = (status) => {
     }
     if (status?.last_cycle_started_at) {
       noteParts.push(`최근 ${formatRelativeTime(new Date(status.last_cycle_started_at))}`);
+    } else if (running) {
+      noteParts.push("초기 분석 준비 중");
     } else if (status?.last_error) {
       noteParts.push(status.last_error);
     } else {
@@ -1875,9 +1890,7 @@ const renderAutopilotStatus = (status) => {
   }
 
   renderAutopilotLogs(status?.logs || []);
-  if (status?.last_plan) {
-    renderAutopilotPlan(status.last_plan);
-  }
+  renderAutopilotPlan(status?.last_plan || null);
   if (autopilotRecommendationsList) {
     renderList(
       autopilotRecommendationsList,
@@ -1976,12 +1989,19 @@ const handleAutopilotStart = async (event) => {
 
   try {
     autopilotStartBtn?.setAttribute("disabled", "true");
+    if (autopilotStateEl) {
+      autopilotStateEl.dataset.status = "warning";
+      autopilotStateEl.textContent = "시작 중";
+    }
     const status = await requestApi("/trading/autopilot/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     renderAutopilotStatus(status);
+    window.setTimeout(() => {
+      fetchAutopilotStatus().catch(() => {});
+    }, 1500);
   } catch (error) {
     autopilotStateEl.dataset.status = "warning";
     autopilotStateEl.textContent = "오류";
@@ -2114,10 +2134,10 @@ const handleAssistant = async (event) => {
   event?.preventDefault();
 
   if (!copilotQuestionInput) return;
-  const question = copilotQuestionInput.value.trim();
+  let question = copilotQuestionInput.value.trim();
   if (!question) {
-    setAssistantStatus("질문을 입력하세요", "warning");
-    return;
+    question = "지금 시장 전략을 요약해줘";
+    copilotQuestionInput.value = question;
   }
 
   const market = (liveMarketInput?.value || "KRW-BTC").trim().toUpperCase();
@@ -2162,12 +2182,10 @@ const handleCopilot = async (event, options = {}) => {
   const { silent = false } = options;
   if (!copilotForm) return;
 
-  const question = copilotQuestionInput?.value.trim();
+  let question = copilotQuestionInput?.value.trim();
   if (!question) {
-    if (!silent && copilotAnswerEl) {
-      copilotAnswerEl.textContent = "먼저 코파일럿에게 질문을 입력해주세요.";
-    }
-    return;
+    question = "지금 시장 전략을 요약해줘";
+    if (copilotQuestionInput) copilotQuestionInput.value = question;
   }
 
   const selectedMode = document.querySelector('input[name="order-mode"]:checked')?.value || "paper";

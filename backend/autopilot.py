@@ -286,7 +286,12 @@ class AutoTrader:
                     f"{execution.mode.upper()} {execution.market} {execution.side} {execution.volume:.6f} 실행",
                 )
             else:
-                self._append_log("info", f"{autopilot_plan.market} 분석 완료: {autopilot_plan.bias} 모드")
+                bias_label = {
+                    "long": "롱",
+                    "short": "숏",
+                    "neutral": "관망",
+                }.get(autopilot_plan.bias, autopilot_plan.bias)
+                self._append_log("info", f"{autopilot_plan.market} 분석 완료: {bias_label} 전략")
 
         except (MarketDataError, ExecutionError, ValueError) as exc:
             with self._lock:
