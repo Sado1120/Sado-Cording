@@ -279,7 +279,7 @@ pytest
 동작하지 않는 상태로 서비스가 올라갈 수 있으므로, 오류를 수정하고 `pytest`를 다시 실행해 녹색 신호를 확인한 뒤에 다음 단계를 진행
 하는 것이 안전한 운영 절차입니다.
 
-`pytest`에는 다음과 같은 추가 검증이 포함되어 있습니다.
+`pytest`에는 다음과 같은 추가 검증이 포함되어 있습니다. 오토파일럿 시나리오별 세부 결과는 [`docs/autopilot_validation.md`](docs/autopilot_validation.md)에서 한눈에 확인할 수 있습니다.
 
 - `docker-compose.yml`이 PyYAML 파서를 통과하는지 확인하여 Synology UI에서 발생하던 `Map keys must be unique`류 오류를 사전에 차단합니다.
 - 각 소스 파일에 Git 패치 접두사(`+`)가 남아 있지 않은지 검사하여 "패치 복사"를 잘못 적용했을 때 즉시 감지합니다.
