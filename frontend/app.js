@@ -2906,9 +2906,19 @@ function renderTradeHistory(entries) {
     const market = (entry.market || "-").toString().toUpperCase();
     const modeLabel = entry.mode === "live" ? "실거래" : "페이퍼";
     const sideLabel = entry.side === "bid" ? "매수" : "매도";
-    const value = Number(entry.value ?? entry.price * entry.volume || 0);
-    const fee = Number(entry.fee ?? 0);
-    const pnl = Number(entry.realized_pnl ?? 0);
+    let tradeValue = parseNumeric(entry.value);
+    if (tradeValue === null) {
+      const price = parseNumeric(entry.price);
+      const volume = parseNumeric(entry.volume);
+      if (price !== null && volume !== null) {
+        tradeValue = price * volume;
+      } else {
+        tradeValue = 0;
+      }
+    }
+    const value = Number.isFinite(tradeValue) ? tradeValue : 0;
+    const fee = parseNumeric(entry.fee) ?? 0;
+    const pnl = parseNumeric(entry.realized_pnl) ?? 0;
     const noteParts = [];
     if (entry.note) {
       noteParts.push(entry.note);

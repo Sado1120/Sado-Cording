@@ -1,14 +1,32 @@
 from email.message import Message
 import re
+import shutil
+import subprocess
 from io import BytesIO
 from pathlib import Path
 from urllib.error import URLError
+
+import pytest
 
 from frontend import serve
 from frontend.serve import DashboardRequestHandler, UTF8RequestHandler, resolve_backend_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_app_js_has_valid_syntax():
+    node_path = shutil.which("node")
+    if not node_path:
+        pytest.skip("Node.js is not available for syntax validation")
+
+    result = subprocess.run(
+        [node_path, "--check", str(PROJECT_ROOT / "frontend" / "app.js")],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_frontend_html_declares_utf8_and_korean_fonts():
