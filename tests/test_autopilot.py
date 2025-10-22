@@ -1,0 +1,395 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+pytest.importorskip("httpx")
+
+from fastapi.testclient import TestClient
+
+from backend import ai
+from backend.autopilot import AutoTrader, AutoTraderConfig
+from backend.execution import PaperBroker
+from backend.market import MarketData
+from backend.schemas import OrderMode
+from backend.trading import Candle
+
+import backend.app as app_module
+from types import SimpleNamespace
+
+
+def _make_market_data(count: int = 120) -> MarketData:
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=count)
+    candles = []
+    price = 10_000_000.0
+    for index in range(count):
+        timestamp = base_time + timedelta(minutes=index)
+        close = price + index * 12_000
+        candles.append(
+            Candle(
+                timestamp=timestamp,
+                open=close - 8_000,
+                high=close + 9_000,
+                low=close - 12_000,
+                close=close,
+                volume=1.5 + index * 0.01,
+            )
+        )
+    return MarketData(candles=candles, source="synthetic")
+
+
+def _fake_candle_fetcher(*, market: str, interval: str, count: int) -> MarketData:
+    return _make_market_data(count)
+
+
+def _fake_news_fetcher(limit: int) -> list[dict]:
+    return []
+
+
+def _fake_autopilot_builder(**kwargs) -> ai.AutoPilotOrderPlan:
+    insight = kwargs["insight"]
+    return ai.AutoPilotOrderPlan(
+        market=insight.market,
+        side="bid",
+        bias="long",
+        order_type="market",
+        suggested_price=None,
+        position_size_pct=5.0,
+        stop_loss_pct=2.0,
+        take_profit_pct=4.0,
+        trailing_stop_pct=1.5,
+        confidence_pct=70.0,
+        reasoning=["테스트 환경 자동매수"],
+        monitoring=["가격 추세 감시"],
+    )
+
+
+def _build_trader(
+    notifier=lambda _message: True,
+    recommendation_scanner=None,
+    autopilot_builder=_fake_autopilot_builder,
+    analyse_market=ai.analyse_market,
+) -> tuple[AutoTrader, PaperBroker]:
+    broker = PaperBroker()
+    trader = AutoTrader(
+        broker=broker,
+        candle_fetcher=_fake_candle_fetcher,
+        news_fetcher=_fake_news_fetcher,
+        analyse_market=analyse_market,
+        autopilot_builder=autopilot_builder,
+        portfolio_builder=lambda **_: None,
+        time_provider=lambda: datetime.now(timezone.utc),
+        notifier=notifier,
+        recommendation_scanner=recommendation_scanner,
+    )
+    return trader, broker
+
+
+def test_autotrader_runs_single_cycle_and_places_order():
+    trader, broker = _build_trader()
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=20_000_000,
+        poll_interval=600.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=50.0,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.running is True
+        assert state.last_plan is not None
+        assert state.last_plan.side == "bid"
+        assert state.last_execution is not None
+        assert state.last_execution.side == "bid"
+        assert state.logs, "오토파일럿 로그가 비어 있습니다."
+        assert state.next_cycle_due_at is not None
+        assert state.last_skip_reason is None
+
+        snapshot = broker.snapshot()
+        assert any(pos.market == "KRW-BTC" for pos in snapshot.positions)
+    finally:
+        stop_state = trader.stop()
+        assert stop_state.running is False
+
+
+def test_autotrader_notifier_invoked():
+    notifications: list[str] = []
+
+    def notifier(message: str) -> bool:
+        notifications.append(message)
+        return True
+
+    trader, _ = _build_trader(notifier=notifier)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=15_000_000,
+        poll_interval=300.0,
+        include_portfolio=False,
+        max_position_pct=0.25,
+        min_confidence_pct=50.0,
+    )
+
+    trader.start(config)
+    try:
+        assert notifications, "알림이 호출되지 않았습니다."
+        assert any("Sado Trade Bot" in message for message in notifications)
+        status = trader.status()
+        assert status.last_skip_reason is None
+    finally:
+        trader.stop()
+
+
+def test_autotrader_records_skip_reason_when_flat_signal():
+    def flat_plan_builder(**kwargs) -> ai.AutoPilotOrderPlan:
+        insight = kwargs["insight"]
+        return ai.AutoPilotOrderPlan(
+            market=insight.market,
+            side="flat",
+            bias="neutral",
+            order_type="monitor",
+            suggested_price=None,
+            position_size_pct=0.0,
+            stop_loss_pct=0.0,
+            take_profit_pct=0.0,
+            trailing_stop_pct=None,
+            confidence_pct=42.0,
+            reasoning=["관망 테스트"],
+            monitoring=["추세 재확인 필요"],
+        )
+
+    trader, _ = _build_trader(autopilot_builder=flat_plan_builder)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.5,
+        capital=10_000_000,
+        poll_interval=180.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=60.0,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.last_execution is None
+        assert state.last_plan is not None
+        assert state.last_plan.side == "flat"
+        assert state.last_skip_reason is not None
+        assert "관망" in state.last_skip_reason
+    finally:
+        trader.stop()
+
+
+def test_autotrader_auto_select_market_switches_market():
+    class DummyRecommendations:
+        def __init__(self, markets: list[str]):
+            self.recommendations = [
+                SimpleNamespace(
+                    market=code,
+                    recommended_action="추세 추종 매수",
+                    confidence_pct=72.5,
+                    score=91.4,
+                )
+                for code in markets
+            ]
+            self.analysis_source = "synthetic"
+            self.errors: list[str] = []
+
+    def recommendation_scanner(base, interval, limit, max_markets, include_warnings):
+        assert base == "KRW"
+        assert interval == "minute60"
+        assert max_markets >= 10
+        return DummyRecommendations(["KRW-ETH", "KRW-SOL"])
+
+    trader, broker = _build_trader(recommendation_scanner=recommendation_scanner)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=25_000_000,
+        poll_interval=120.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=50.0,
+        auto_select_market=True,
+        recommendation_base="KRW",
+        recommendation_interval="minute60",
+        recommendation_max_markets=30,
+        recommendation_include_warnings=False,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.config is not None
+        assert state.config.market == "KRW-ETH"
+        assert state.last_plan is not None
+        assert state.last_plan.market == "KRW-ETH"
+        snapshot = broker.snapshot()
+        assert any(pos.market == "KRW-ETH" for pos in snapshot.positions)
+        assert state.last_recommendations, "추천 요약이 비어 있습니다."
+        assert state.last_recommendations[0].startswith("KRW-ETH")
+    finally:
+        trader.stop()
+
+
+def test_autopilot_api_endpoints(monkeypatch):
+    trader, _ = _build_trader()
+    original_trader = app_module._auto_trader
+    monkeypatch.setattr(app_module, "_auto_trader", trader)
+    client = TestClient(app_module.app)
+
+    try:
+        payload = {
+            "mode": "paper",
+            "market": "KRW-BTC",
+            "interval": "minute60",
+            "risk_appetite": 0.6,
+            "capital": 15_000_000,
+            "poll_interval": 300,
+            "max_position_pct": 0.2,
+            "min_confidence_pct": 50,
+            "include_portfolio": False,
+        }
+        start_response = client.post("/trading/autopilot/start", json=payload)
+        assert start_response.status_code == 200
+        start_data = start_response.json()
+        assert start_data["running"] is True
+        assert start_data["last_plan"]["side"] == "bid"
+        assert start_data["next_cycle_due_at"] is not None
+        assert start_data["config"]["auto_select_market"] is False
+        assert "recent_recommendations" in start_data
+
+        status_response = client.get("/trading/autopilot/status")
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        assert status_data["config"]["market"] == "KRW-BTC"
+        assert "next_cycle_due_at" in status_data
+        assert "recommendation_source" in status_data
+
+        stop_response = client.post("/trading/autopilot/stop")
+        assert stop_response.status_code == 200
+        stop_data = stop_response.json()
+        assert stop_data["running"] is False
+    finally:
+        stop_state = trader.stop()
+        assert stop_state.running is False
+        monkeypatch.setattr(app_module, "_auto_trader", original_trader)
+
+
+def test_autotrader_handles_analysis_exception_gracefully():
+    def failing_analyse(*_args, **_kwargs):
+        raise RuntimeError("analysis boom")
+
+    trader, _ = _build_trader(analyse_market=failing_analyse)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.5,
+        capital=12_000_000,
+        poll_interval=120.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=55.0,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.running is True
+        assert state.last_plan is None
+        assert state.last_execution is None
+        assert state.last_error is not None
+        assert "내부 오류" in state.last_error
+        assert state.last_skip_reason is not None
+        assert "관망" in state.last_skip_reason
+    finally:
+        trader.stop()
+
+
+def test_autotrader_handles_recommendation_failure():
+    def failing_scanner(*_args, **_kwargs):
+        raise RuntimeError("scan failed")
+
+    trader, _ = _build_trader(recommendation_scanner=failing_scanner)
+    config = AutoTraderConfig(
+        mode=OrderMode.PAPER,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.55,
+        capital=18_000_000,
+        poll_interval=150.0,
+        include_portfolio=False,
+        max_position_pct=0.25,
+        min_confidence_pct=50.0,
+        auto_select_market=True,
+    )
+
+    state = trader.start(config)
+    try:
+        assert state.running is True
+        assert state.last_plan is None
+        assert state.last_execution is None
+        assert state.last_error is not None
+        assert "추천 엔진" in state.last_error
+        assert state.last_skip_reason is not None
+        assert "관망" in state.last_skip_reason
+    finally:
+        trader.stop()
+
+
+def test_ai_copilot_falls_back_to_synthetic_data(monkeypatch):
+    client = TestClient(app_module.app)
+
+    def failing_fetch(**_kwargs):
+        raise app_module.MarketDataError("네트워크 오류")
+
+    monkeypatch.setattr(app_module, "fetch_upbit_candles", failing_fetch)
+
+    payload = {
+        "question": "시장 요약 부탁해",
+        "market": "KRW-BTC",
+        "interval": "minute60",
+        "mode": "paper",
+        "risk_appetite": 0.55,
+        "capital": 15_000_000,
+        "include_portfolio": True,
+    }
+
+    response = client.post("/ai/copilot", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["autopilot"]["market"] == "KRW-BTC"
+    assert data["summary_points"], "요약 정보가 비어 있습니다."
+
+
+def test_ai_assistant_falls_back_to_synthetic_data(monkeypatch):
+    client = TestClient(app_module.app)
+
+    def failing_fetch(**_kwargs):
+        raise app_module.MarketDataError("연결 실패")
+
+    monkeypatch.setattr(app_module, "fetch_upbit_candles", failing_fetch)
+
+    payload = {
+        "question": "전략 추천해줘",
+        "market": "KRW-ETH",
+        "interval": "minute60",
+        "risk_appetite": 0.6,
+        "capital": 13_000_000,
+        "include_autopilot": True,
+    }
+
+    response = client.post("/ai/assistant", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["insight"]["market"] == "KRW-ETH"
+    assert data["answer"], "어시스턴트 응답이 비어 있습니다."
