@@ -418,6 +418,7 @@
               <button id="chat-test-btn" class="btn btn--ghost btn--compact" type="button">테스트 전송</button>
             </div>
             <span id="chat-test-status" class="status-pill" data-status="idle">대기</span>
+            <p id="chat-status-host" class="chat-status muted">웹훅 호스트 정보를 확인하는 중입니다.</p>
             <p id="chat-status-detail" class="chat-status muted">최근 웹훅 점검 이력이 없습니다.</p>
           </article>
           <article class="system-card system-card--diagnostics">
@@ -436,6 +437,10 @@
         <header>
           <h2>업비트 마켓 탐색기</h2>
           <span class="panel-subtitle">코인을 검색하고 즉시 시뮬레이션·페이퍼·오토파일럿에 적용하세요</span>
+          <div class="panel-status" id="market-directory-status">
+            <span class="status-pill" data-status="loading">불러오는 중</span>
+            <small id="market-directory-note" class="panel-status__note muted">업비트 마켓 정보를 불러오는 중입니다.</small>
+          </div>
         </header>
         <div class="market-explorer">
           <div class="market-explorer__controls">

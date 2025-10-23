@@ -379,7 +379,7 @@ const normaliseMarketEntry = (entry) => {
     korean = entry.korean_name ?? entry.korean ?? entry.name;
     english = entry.english_name ?? entry.english ?? entry.display ?? entry.market;
     warning = (entry.market_warning || entry.warning || "NONE").toString();
-    suspended = Boolean(entry.trading_suspended || entry.suspended);
+    suspended = toBooleanFlag(entry.trading_suspended ?? entry.suspended);
     base = entry.base_currency;
     quote = entry.quote_currency;
   } else {
@@ -402,8 +402,16 @@ const normaliseMarketEntry = (entry) => {
     base_currency: baseCurrency,
     quote_currency: quoteCurrency,
     market_warning: warning.toString().toUpperCase() || "NONE",
-    trading_suspended: suspended,
+    trading_suspended: toBooleanFlag(suspended),
   };
+};
+
+const toBooleanFlag = (value) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "boolean") return value;
+  const normalised = String(value).trim().toLowerCase();
+  if (!normalised) return false;
+  return !["0", "false", "no", "off", "none", "null"].includes(normalised);
 };
 
 const FALLBACK_MARKETS = FALLBACK_MARKET_ROWS.map((row) => normaliseMarketEntry(row)).filter(Boolean);
@@ -491,6 +499,9 @@ const chatTestBtn = document.getElementById("chat-test-btn");
 const chatTestMessageInput = document.getElementById("chat-test-message");
 const chatTestStatusEl = document.getElementById("chat-test-status");
 const chatStatusDetailEl = document.getElementById("chat-status-detail");
+const chatStatusHostEl = document.getElementById("chat-status-host");
+const marketDirectoryStatusEl = document.getElementById("market-directory-status");
+const marketDirectoryNoteEl = document.getElementById("market-directory-note");
 const paperStatusMarketInput = document.getElementById("paper-status-market");
 const paperStatusIntervalSelect = document.getElementById("paper-status-interval");
 const paperStatusApplyBtn = document.getElementById("paper-status-apply");
@@ -1080,9 +1091,15 @@ const fetchMarketDirectory = async () => {
   renderMarketOptions(cachedMarkets);
   renderMarketGroups(cachedMarketGroups);
   renderMarketResults();
+  setMarketDirectoryStatus("loading", "불러오는 중", "업비트 마켓 정보를 불러오는 중입니다.");
   try {
     const response = await requestApi("/market/list?only_krw=false");
     if (!response?.markets?.length) {
+      setMarketDirectoryStatus(
+        "warning",
+        "데이터 확인 필요",
+        "마켓 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
+      );
       return;
     }
     cachedMarkets = response.markets.map((item) => ({
@@ -1092,9 +1109,9 @@ const fetchMarketDirectory = async () => {
       base_currency: (item.base_currency || "KRW").toUpperCase(),
       quote_currency: (item.quote_currency || "").toUpperCase(),
       warning: item.market_warning,
-      suspended: Boolean(item.trading_suspended),
+      suspended: toBooleanFlag(item.trading_suspended),
       market_warning: (item.market_warning || "NONE").toUpperCase(),
-      trading_suspended: Boolean(item.trading_suspended),
+      trading_suspended: toBooleanFlag(item.trading_suspended),
     }));
     cachedMarketGroups = Array.isArray(response.groups)
       ? response.groups.map((group) => ({
@@ -1107,7 +1124,19 @@ const fetchMarketDirectory = async () => {
     renderMarketOptions(cachedMarkets);
     renderMarketGroups(cachedMarketGroups);
     renderMarketResults();
+    const note =
+      response.source === "upbit"
+        ? "업비트 실시간 데이터로 최신 목록을 표시합니다."
+        : "업비트 연결이 원활하지 않아 내장 디렉터리를 사용 중입니다.";
+    const state = response.source === "upbit" ? "online" : "fallback";
+    const label = response.source === "upbit" ? "실시간 연동" : "안전 모드";
+    setMarketDirectoryStatus(state, label, note);
   } catch (error) {
+    setMarketDirectoryStatus(
+      "error",
+      "연결 실패",
+      error?.message || "업비트 API 응답을 확인할 수 없습니다."
+    );
     // Keep fallback options when live directory is unavailable.
   }
 };
@@ -1222,6 +1251,30 @@ const updateChatTestStatus = (state, message) => {
   if (!chatTestStatusEl) return;
   chatTestStatusEl.dataset.status = state;
   chatTestStatusEl.textContent = message;
+};
+
+const setMarketDirectoryStatus = (state, label, note = "") => {
+  if (!marketDirectoryStatusEl) return;
+  const pill = marketDirectoryStatusEl.querySelector(".status-pill");
+  if (pill) {
+    pill.dataset.status = state;
+    pill.textContent = label;
+  }
+  if (marketDirectoryNoteEl) {
+    if (note) {
+      marketDirectoryNoteEl.textContent = note;
+      marketDirectoryNoteEl.classList.remove("muted");
+      if (["fallback", "error", "warning"].includes(state)) {
+        marketDirectoryNoteEl.classList.add("status-note--warning");
+      } else {
+        marketDirectoryNoteEl.classList.remove("status-note--warning");
+      }
+    } else {
+      marketDirectoryNoteEl.textContent = "";
+      marketDirectoryNoteEl.classList.add("muted");
+      marketDirectoryNoteEl.classList.remove("status-note--warning");
+    }
+  }
 };
 
 const formatDateTime = (date) =>
@@ -2853,15 +2906,32 @@ const refreshChatStatus = async () => {
   if (!chatStatusDetailEl) return;
   try {
     const status = await requestApi("/notifications/chat/status");
+    if (chatStatusHostEl) {
+      if (status.webhook_host) {
+        chatStatusHostEl.textContent = `호스트: ${status.webhook_host}`;
+        chatStatusHostEl.classList.add("muted");
+      } else {
+        chatStatusHostEl.textContent = "웹훅 호스트를 확인할 수 없습니다.";
+        chatStatusHostEl.classList.remove("muted");
+      }
+    }
     if (!status.configured) {
       chatStatusDetailEl.textContent = "웹훅 URL이 설정되지 않았습니다.";
       chatStatusDetailEl.classList.remove("muted");
+      if (chatStatusHostEl) {
+        chatStatusHostEl.textContent = "웹훅 미설정";
+        chatStatusHostEl.classList.remove("muted");
+      }
       return;
     }
 
     if (status.last_error) {
       chatStatusDetailEl.textContent = `최근 오류: ${status.last_error}`;
       chatStatusDetailEl.classList.remove("muted");
+      if (chatStatusHostEl && status.webhook_host) {
+        chatStatusHostEl.textContent = `호스트: ${status.webhook_host}`;
+        chatStatusHostEl.classList.remove("muted");
+      }
       return;
     }
 
@@ -2876,6 +2946,10 @@ const refreshChatStatus = async () => {
   } catch (error) {
     chatStatusDetailEl.textContent = "웹훅 상태를 불러오지 못했습니다.";
     chatStatusDetailEl.classList.remove("muted");
+    if (chatStatusHostEl) {
+      chatStatusHostEl.textContent = "호스트 확인 실패";
+      chatStatusHostEl.classList.remove("muted");
+    }
   }
 };
 

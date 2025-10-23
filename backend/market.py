@@ -70,6 +70,8 @@ _INTERVAL_PATHS: Dict[Interval, Tuple[str, Optional[str]]] = {
 }
 
 _UPBIT_API_BASE = "https://api.upbit.com"
+_UPBIT_USER_AGENT = "SadoTradeBot/1.0 (+https://github.com/iljin-corp/sado-trade-bot)"
+_UPBIT_HEADERS = {"Accept": "application/json", "User-Agent": _UPBIT_USER_AGENT}
 
 _UPBIT_ENABLE_NETWORK = os.getenv("UPBIT_ENABLE_NETWORK", "1").lower() not in {
     "0",
@@ -288,10 +290,10 @@ def fetch_upbit_candles(
 
     query = urlencode({"market": market, "count": count})
     url = f"{_UPBIT_API_BASE}{path}?{query}"
-    request = Request(url, headers={"Accept": "application/json"})
+    request = Request(url, headers=_UPBIT_HEADERS)
 
     try:
-        with urlopen(request, timeout=3) as response:
+        with urlopen(request, timeout=5) as response:
             raw = response.read().decode("utf-8")
             if not raw:
                 raise MarketDataError("업비트에서 빈 응답을 받았습니다.")
@@ -346,10 +348,10 @@ def fetch_upbit_markets(*, only_krw: bool = True) -> MarketList:
         return MarketList(markets=_fallback_markets(only_krw), source="fallback")
 
     url = f"{_UPBIT_API_BASE}/v1/market/all?isDetails=true"
-    request = Request(url, headers={"Accept": "application/json"})
+    request = Request(url, headers=_UPBIT_HEADERS)
 
     try:
-        with urlopen(request, timeout=3) as response:
+        with urlopen(request, timeout=5) as response:
             raw = response.read().decode("utf-8")
             if not raw:
                 raise MarketDataError("업비트에서 빈 마켓 목록을 받았습니다.")

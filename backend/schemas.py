@@ -698,3 +698,4 @@ class ChatNotificationStatus(BaseModel):
     last_success_at: Optional[datetime]
     last_error: Optional[str]
     last_message: Optional[str]
+    webhook_host: Optional[str]

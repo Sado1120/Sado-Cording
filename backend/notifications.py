@@ -164,7 +164,7 @@ def notify_synology_chat(
         if httpx is None:  # dependency unavailable
             _record_attempt(success=False, message=message, error="httpx 패키지가 설치되어 있지 않습니다.")
             return False
-        client = httpx.Client(timeout=timeout)
+        client = httpx.Client(timeout=timeout, follow_redirects=True)
         created_client = True
 
     try:
@@ -221,12 +221,21 @@ def notify_synology_chat_on_change(
 
 
 def get_synology_chat_status() -> dict:
+    url = _resolve_webhook_url()
+    host = ""
+    if url:
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname or ""
+        except Exception:  # pragma: no cover - defensive fallback
+            host = ""
     return {
-        "configured": bool(_resolve_webhook_url()),
+        "configured": bool(url),
         "last_attempt_at": _last_attempt_at,
         "last_success_at": _last_success_at,
         "last_error": _last_error,
         "last_message": _last_message,
+        "webhook_host": host,
     }
 
 
