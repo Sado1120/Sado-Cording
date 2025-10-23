@@ -52,6 +52,9 @@ def test_frontend_html_declares_utf8_and_korean_fonts():
     assert "copilot-form" in html, "Copilot form should be present to submit AI questions"
     assert "autopilot-bias" in html, "Autopilot badge should be visible for trading plans"
     assert "autopilot-auto-market" in html, "Autopilot form should expose auto-select toggle"
+    market_input = re.search(r'<input[^>]+id="autopilot-market"[^>]*>', html)
+    assert market_input, "Autopilot market input should be rendered"
+    assert "required" not in market_input.group(0), "Autopilot market input must allow auto-select mode without manual entry"
     assert "autopilot-recommendations" in html, "Autopilot status should list AI recommendations"
     assert "autopilot-hold-reason" in html, "Autopilot 관망 사유 표시가 누락되었습니다."
     assert "equity-note" in html, "Equity summary note should guide users through the chart interpretation"

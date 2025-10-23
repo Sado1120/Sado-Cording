@@ -20,6 +20,23 @@ const LOCAL_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 let apiBaseCandidates = [];
 let apiBase = DEFAULT_API_BASE;
 const DEFAULT_CAPITAL_KRW = 20_000_000;
+const DEFAULT_MARKET_CODE = "KRW-BTC";
+const DEFAULT_AUTOPILOT_INTERVAL = "minute60";
+const DEFAULT_AUTOPILOT_RISK = 0.6;
+const DEFAULT_AUTOPILOT_CAPITAL = DEFAULT_CAPITAL_KRW;
+const DEFAULT_AUTOPILOT_POLL_INTERVAL = 120;
+const DEFAULT_AUTOPILOT_MAX_POSITION = 0.25;
+const DEFAULT_AUTOPILOT_CONFIDENCE = 60;
+const DEFAULT_AUTOPILOT_MAX_MARKETS = 40;
+const AUTOPILOT_MIN_CAPITAL = 1_000_000;
+const AUTOPILOT_MIN_POLL_INTERVAL = 15;
+const AUTOPILOT_MAX_POLL_INTERVAL = 900;
+const AUTOPILOT_MIN_MAX_POSITION = 0.05;
+const AUTOPILOT_MAX_MAX_POSITION = 1;
+const AUTOPILOT_MIN_CONFIDENCE = 0;
+const AUTOPILOT_MAX_CONFIDENCE = 100;
+const AUTOPILOT_MIN_RECOMMENDATION_MARKETS = 5;
+const AUTOPILOT_MAX_RECOMMENDATION_MARKETS = 120;
 const COLLAPSIBLE_SELECTOR = "[data-collapsible]";
 const COLLAPSIBLE_DEFAULT_LIMIT = 220;
 const collapsibleMetadata = new WeakMap();
@@ -29,6 +46,61 @@ const AUTO_REFRESH_INTERVALS = Object.freeze({
   aiPortfolio: 300_000,
   copilot: 300_000,
 });
+
+const toFiniteNumber = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : NaN;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return NaN;
+    }
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? numeric : NaN;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : NaN;
+};
+
+const sanitiseDecimalInput = (input, fallback, { min = null, max = null, precision = 4 } = {}) => {
+  let numeric = toFiniteNumber(input?.value);
+  if (Number.isNaN(numeric)) {
+    numeric = fallback;
+  }
+  if (typeof min === "number" && numeric < min) {
+    numeric = min;
+  }
+  if (typeof max === "number" && numeric > max) {
+    numeric = max;
+  }
+  if (typeof precision === "number" && Number.isFinite(precision)) {
+    const factor = 10 ** Math.max(0, precision);
+    numeric = Math.round(numeric * factor) / factor;
+  }
+  if (input) {
+    input.value = `${numeric}`;
+  }
+  return numeric;
+};
+
+const sanitiseIntegerInput = (input, fallback, { min = null, max = null } = {}) => {
+  let numeric = toFiniteNumber(input?.value);
+  if (Number.isNaN(numeric)) {
+    numeric = fallback;
+  }
+  numeric = Math.round(numeric);
+  if (typeof min === "number" && numeric < min) {
+    numeric = min;
+  }
+  if (typeof max === "number" && numeric > max) {
+    numeric = max;
+  }
+  if (input) {
+    input.value = `${numeric}`;
+  }
+  return numeric;
+};
 
 const createAutoRunner = (fn, delay = 700) => {
   let timerId;
@@ -1985,29 +2057,87 @@ const handleAutopilotStart = async (event) => {
   event?.preventDefault();
   if (!autopilotForm) return;
 
-  const market = (autopilotMarketInput?.value || "").trim().toUpperCase();
+  const autoSelectEnabled = Boolean(autopilotAutoMarketInput?.checked);
+  let market = (autopilotMarketInput?.value || "").trim().toUpperCase();
   if (!market) {
-    if (autopilotLastErrorEl) autopilotLastErrorEl.textContent = "먼저 마켓을 입력해주세요.";
-    return;
+    if (autoSelectEnabled) {
+      market = DEFAULT_MARKET_CODE;
+      if (autopilotMarketInput) {
+        autopilotMarketInput.value = market;
+      }
+    } else {
+      if (autopilotLastErrorEl) {
+        autopilotLastErrorEl.textContent = "먼저 마켓을 입력해주세요.";
+      }
+      autopilotMarketInput?.focus();
+      return;
+    }
   }
+
+  const riskAppetite = sanitiseDecimalInput(autopilotRiskInput, DEFAULT_AUTOPILOT_RISK, {
+    min: 0,
+    max: 1,
+    precision: 3,
+  });
+  if (autopilotRiskInput) {
+    updateAutopilotRiskLabel(autopilotRiskInput.value);
+  }
+
+  const capital = sanitiseIntegerInput(autopilotCapitalInput, DEFAULT_AUTOPILOT_CAPITAL, {
+    min: AUTOPILOT_MIN_CAPITAL,
+  });
+  const pollInterval = sanitiseIntegerInput(
+    autopilotPollInput,
+    DEFAULT_AUTOPILOT_POLL_INTERVAL,
+    {
+      min: AUTOPILOT_MIN_POLL_INTERVAL,
+      max: AUTOPILOT_MAX_POLL_INTERVAL,
+    }
+  );
+  const maxPositionPct = sanitiseDecimalInput(
+    autopilotMaxPositionInput,
+    DEFAULT_AUTOPILOT_MAX_POSITION,
+    {
+      min: AUTOPILOT_MIN_MAX_POSITION,
+      max: AUTOPILOT_MAX_MAX_POSITION,
+      precision: 4,
+    }
+  );
+  const minConfidencePct = sanitiseIntegerInput(
+    autopilotConfidenceInput,
+    DEFAULT_AUTOPILOT_CONFIDENCE,
+    {
+      min: AUTOPILOT_MIN_CONFIDENCE,
+      max: AUTOPILOT_MAX_CONFIDENCE,
+    }
+  );
+  const recommendationMaxMarkets = sanitiseIntegerInput(
+    autopilotMaxMarketsInput,
+    DEFAULT_AUTOPILOT_MAX_MARKETS,
+    {
+      min: AUTOPILOT_MIN_RECOMMENDATION_MARKETS,
+      max: AUTOPILOT_MAX_RECOMMENDATION_MARKETS,
+    }
+  );
+  const recommendationInterval =
+    autopilotRecommendationIntervalSelect?.value ||
+    autopilotIntervalSelect?.value ||
+    DEFAULT_AUTOPILOT_INTERVAL;
 
   const payload = {
     mode: autopilotModeSelect?.value || "paper",
     market,
-    interval: autopilotIntervalSelect?.value || "minute60",
-    risk_appetite: Number(autopilotRiskInput?.value || 0.6),
-    capital: Number(autopilotCapitalInput?.value || 0),
-    poll_interval: Number(autopilotPollInput?.value || 120),
-    max_position_pct: Number(autopilotMaxPositionInput?.value || 0.25),
-    min_confidence_pct: Number(autopilotConfidenceInput?.value || 60),
+    interval: autopilotIntervalSelect?.value || DEFAULT_AUTOPILOT_INTERVAL,
+    risk_appetite: riskAppetite,
+    capital,
+    poll_interval: pollInterval,
+    max_position_pct: maxPositionPct,
+    min_confidence_pct: minConfidencePct,
     include_portfolio: Boolean(autopilotIncludePortfolioInput?.checked),
-    auto_select_market: Boolean(autopilotAutoMarketInput?.checked),
+    auto_select_market: autoSelectEnabled,
     recommendation_base: (autopilotBaseSelect?.value || "KRW").toUpperCase(),
-    recommendation_interval:
-      autopilotRecommendationIntervalSelect?.value ||
-      autopilotIntervalSelect?.value ||
-      "minute60",
-    recommendation_max_markets: Number(autopilotMaxMarketsInput?.value || 40),
+    recommendation_interval: recommendationInterval,
+    recommendation_max_markets: recommendationMaxMarkets,
     recommendation_include_warnings: Boolean(autopilotIncludeWarningsInput?.checked),
   };
 
