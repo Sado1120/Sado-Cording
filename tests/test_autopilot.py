@@ -358,6 +358,64 @@ def test_autopilot_api_endpoints(monkeypatch):
         monkeypatch.setattr(app_module, "_auto_trader", original_trader)
 
 
+def test_autopilot_api_allows_blank_market_when_auto_select(monkeypatch):
+    if TestClient is None:
+        pytest.skip("httpx not available")
+
+    trader, _ = _build_trader()
+    original_trader = app_module._auto_trader
+    monkeypatch.setattr(app_module, "_auto_trader", trader)
+    client = TestClient(app_module.app)
+
+    try:
+        payload = {
+            "mode": "paper",
+            "market": "",
+            "interval": "minute60",
+            "risk_appetite": 0.6,
+            "capital": 12_000_000,
+            "poll_interval": 180,
+            "max_position_pct": 0.2,
+            "min_confidence_pct": 50,
+            "include_portfolio": False,
+            "auto_select_market": True,
+        }
+        response = client.post("/trading/autopilot/start", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["running"] is True
+        assert data["config"]["market"] == "KRW-BTC"
+        assert data["config"]["auto_select_market"] is True
+    finally:
+        trader.stop()
+        monkeypatch.setattr(app_module, "_auto_trader", original_trader)
+
+
+def test_autopilot_api_rejects_blank_market_when_auto_select_disabled(monkeypatch):
+    if TestClient is None:
+        pytest.skip("httpx not available")
+
+    client = TestClient(app_module.app)
+
+    payload = {
+        "mode": "paper",
+        "market": " ",
+        "interval": "minute60",
+        "risk_appetite": 0.6,
+        "capital": 10_000_000,
+        "poll_interval": 180,
+        "max_position_pct": 0.2,
+        "min_confidence_pct": 50,
+        "include_portfolio": False,
+        "auto_select_market": False,
+    }
+
+    response = client.post("/trading/autopilot/start", json=payload)
+    assert response.status_code == 422
+    detail = response.json().get("detail")
+    assert any("마켓" in (item.get("msg", "") or "") for item in detail)
+
+
 def test_autotrader_handles_analysis_exception_gracefully():
     def failing_analyse(*_args, **_kwargs):
         raise RuntimeError("analysis boom")

@@ -559,9 +559,12 @@ class AssistantResponse(BaseModel):
     pushed_to_chat: bool = False
 
 
+DEFAULT_AUTOPILOT_MARKET = "KRW-BTC"
+
+
 class AutoPilotConfigRequest(BaseModel):
     mode: OrderMode = OrderMode.PAPER
-    market: str = Field("KRW-BTC", min_length=3)
+    market: str = Field(DEFAULT_AUTOPILOT_MARKET, min_length=0)
     interval: str = Field("minute60")
     risk_appetite: float = Field(0.55, ge=0, le=1)
     capital: float = Field(20_000_000, gt=0)
@@ -574,6 +577,34 @@ class AutoPilotConfigRequest(BaseModel):
     recommendation_interval: str = Field("minute60")
     recommendation_max_markets: int = Field(40, ge=5, le=120)
     recommendation_include_warnings: bool = False
+
+    @root_validator(pre=True)
+    def _normalise_market(cls, values: dict) -> dict:
+        raw_market = values.get("market", DEFAULT_AUTOPILOT_MARKET)
+        auto_select = bool(values.get("auto_select_market", True))
+
+        market = str(raw_market or "").strip().upper()
+        if not market:
+            if auto_select:
+                market = DEFAULT_AUTOPILOT_MARKET
+            else:
+                raise ValueError("auto_select_market가 꺼진 경우 마켓을 반드시 입력해야 합니다.")
+
+        values["market"] = market
+
+        base = values.get("recommendation_base")
+        if base is not None:
+            values["recommendation_base"] = str(base).strip().upper() or "KRW"
+
+        interval = values.get("interval")
+        if interval is not None:
+            values["interval"] = str(interval).strip() or "minute60"
+
+        rec_interval = values.get("recommendation_interval")
+        if rec_interval is not None:
+            values["recommendation_interval"] = str(rec_interval).strip() or "minute60"
+
+        return values
 
 
 class AutoPilotLogEntryPayload(BaseModel):
