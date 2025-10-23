@@ -1124,18 +1124,41 @@ const fetchMarketDirectory = async () => {
     renderMarketOptions(cachedMarkets);
     renderMarketGroups(cachedMarketGroups);
     renderMarketResults();
-    const note =
-      response.source === "upbit"
+    const statusRaw = (response.status || "").toLowerCase();
+    const isLiveSource = response.source === "upbit";
+    const state =
+      statusRaw === "up"
+        ? "online"
+        : statusRaw === "down"
+        ? "fallback"
+        : isLiveSource
+        ? "warning"
+        : "fallback";
+    const label =
+      statusRaw === "up"
+        ? "실시간 연동"
+        : statusRaw === "down"
+        ? "안전 모드"
+        : "상태 점검 필요";
+    let note = response.message || "";
+    if (!note) {
+      note = isLiveSource
         ? "업비트 실시간 데이터로 최신 목록을 표시합니다."
         : "업비트 연결이 원활하지 않아 내장 디렉터리를 사용 중입니다.";
-    const state = response.source === "upbit" ? "online" : "fallback";
-    const label = response.source === "upbit" ? "실시간 연동" : "안전 모드";
-    setMarketDirectoryStatus(state, label, note);
+    }
+    const detail = response.detail || (response.backoff_seconds_remaining
+      ? `재시도까지 약 ${Math.round(response.backoff_seconds_remaining)}초`
+      : "");
+    setMarketDirectoryStatus(state, label, note, {
+      detail,
+      checkedAt: response.checked_at || null,
+    });
   } catch (error) {
     setMarketDirectoryStatus(
       "error",
       "연결 실패",
-      error?.message || "업비트 API 응답을 확인할 수 없습니다."
+      error?.message || "업비트 API 응답을 확인할 수 없습니다.",
+      { detail: "네트워크 상태를 다시 확인해 주세요." }
     );
     // Keep fallback options when live directory is unavailable.
   }
@@ -1253,7 +1276,7 @@ const updateChatTestStatus = (state, message) => {
   chatTestStatusEl.textContent = message;
 };
 
-const setMarketDirectoryStatus = (state, label, note = "") => {
+const setMarketDirectoryStatus = (state, label, note = "", extra) => {
   if (!marketDirectoryStatusEl) return;
   const pill = marketDirectoryStatusEl.querySelector(".status-pill");
   if (pill) {
@@ -1261,8 +1284,23 @@ const setMarketDirectoryStatus = (state, label, note = "") => {
     pill.textContent = label;
   }
   if (marketDirectoryNoteEl) {
+    const detailText = extra?.detail ? String(extra.detail) : "";
+    const checkedAt = extra?.checkedAt ? new Date(extra.checkedAt) : null;
+    const hasCheckedAt = checkedAt && !Number.isNaN(checkedAt.getTime());
+    const parts = [];
     if (note) {
-      marketDirectoryNoteEl.textContent = note;
+      parts.push(note);
+    }
+    if (detailText) {
+      parts.push(detailText);
+    }
+    if (hasCheckedAt) {
+      parts.push(
+        `마지막 확인 ${formatDateTime(checkedAt)} (${formatRelativeTime(checkedAt)})`
+      );
+    }
+    if (parts.length) {
+      marketDirectoryNoteEl.textContent = parts.join(" · ");
       marketDirectoryNoteEl.classList.remove("muted");
       if (["fallback", "error", "warning"].includes(state)) {
         marketDirectoryNoteEl.classList.add("status-note--warning");
@@ -1274,6 +1312,10 @@ const setMarketDirectoryStatus = (state, label, note = "") => {
       marketDirectoryNoteEl.classList.add("muted");
       marketDirectoryNoteEl.classList.remove("status-note--warning");
     }
+  }
+  if (marketDirectoryStatusEl) {
+    const detailText = extra?.detail ? String(extra.detail) : "";
+    marketDirectoryStatusEl.dataset.detail = detailText;
   }
 };
 

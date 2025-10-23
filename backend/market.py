@@ -7,10 +7,15 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+try:  # pragma: no cover - optional dependency availability
+    import httpx
+except Exception:  # pragma: no cover - httpx may be absent in constrained envs
+    httpx = None  # type: ignore[assignment]
 
 from .trading import Candle, generate_synthetic_prices, generate_market_insights
 
@@ -33,6 +38,9 @@ Interval = Literal[
 class MarketData:
     candles: List[Candle]
     source: Literal["upbit", "synthetic"]
+    status: str = "unknown"
+    message: str = ""
+    detail: Optional[str] = None
 
 
 @dataclass
@@ -50,6 +58,11 @@ class MarketInfo:
 class MarketList:
     markets: List[MarketInfo]
     source: Literal["upbit", "fallback"]
+    status: str = "unknown"
+    message: str = ""
+    detail: Optional[str] = None
+    checked_at: Optional[datetime] = None
+    backoff_seconds_remaining: float = 0.0
 
 
 class MarketDataError(RuntimeError):
@@ -78,11 +91,17 @@ _UPBIT_ENABLE_NETWORK = os.getenv("UPBIT_ENABLE_NETWORK", "1").lower() not in {
     "false",
     "no",
 }
-_UPBIT_NETWORK_BACKOFF_SECONDS = 300.0
+_UPBIT_NETWORK_BACKOFF_SECONDS = 90.0
 _upbit_network_state = {
     "status": "unknown",  # "up" | "down" | "unknown"
     "checked_at": 0.0,
+    "checked_at_utc": None,
+    "backoff_until": 0.0,
+    "message": "업비트 연결 상태를 확인하는 중입니다.",
+    "detail": "",
 }
+
+_UPBIT_HTTP_TIMEOUT = 10.0
 
 _NEWS_CACHE_TTL_SECONDS = 300.0
 _NEWS_BACKOFF_SECONDS = 600.0
@@ -245,6 +264,14 @@ def _parse_upbit_timestamp(value: str) -> datetime:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
 
 
+def _describe_error(exc: BaseException) -> str:
+    if exc.__cause__ is not None:
+        return str(exc.__cause__)
+    if exc.__context__ is not None and exc.__context__ is not exc:
+        return str(exc.__context__)
+    return str(exc)
+
+
 def _upbit_network_down() -> bool:
     if not _UPBIT_ENABLE_NETWORK:
         return True
@@ -255,9 +282,94 @@ def _upbit_network_down() -> bool:
     return elapsed < _UPBIT_NETWORK_BACKOFF_SECONDS
 
 
-def _mark_network(status: str) -> None:
-    _upbit_network_state["status"] = status
-    _upbit_network_state["checked_at"] = time.monotonic()
+def _mark_network(
+    status: str,
+    *,
+    message: Optional[str] = None,
+    detail: Optional[str] = None,
+) -> None:
+    state = _upbit_network_state
+    state["status"] = status
+    state["checked_at"] = time.monotonic()
+    state["checked_at_utc"] = datetime.now(timezone.utc)
+    if message is not None:
+        state["message"] = message
+    elif status == "up":
+        state["message"] = "업비트 실시간 데이터에 연결되었습니다."
+    if detail is not None:
+        state["detail"] = detail
+    elif status == "up":
+        state["detail"] = ""
+    if status == "down":
+        state["backoff_until"] = state["checked_at"] + _UPBIT_NETWORK_BACKOFF_SECONDS
+    else:
+        state["backoff_until"] = 0.0
+
+
+def get_upbit_network_state() -> Dict[str, Any]:
+    state = _upbit_network_state
+    status = state.get("status", "unknown")
+    message = state.get("message") or "업비트 연결 상태를 확인하는 중입니다."
+    detail = state.get("detail") or ""
+    checked_at = state.get("checked_at_utc")
+    remaining = 0.0
+    if status == "down":
+        backoff_until = state.get("backoff_until", 0.0)
+        remaining = max(0.0, backoff_until - time.monotonic())
+        if remaining > 0:
+            seconds = int(round(remaining))
+            if "재시도" not in message:
+                message = f"{message} · 재시도까지 약 {seconds}초 남았습니다."
+    return {
+        "status": status,
+        "message": message,
+        "detail": detail,
+        "checked_at": checked_at,
+        "backoff_seconds_remaining": remaining,
+    }
+
+
+def _request_upbit(path: str, params: Optional[Dict[str, object]] = None) -> Any:
+    query = urlencode(params or {})
+    url = f"{_UPBIT_API_BASE}{path}{f'?{query}' if query else ''}"
+
+    httpx_error: Optional[BaseException] = None
+    if httpx is not None:
+        try:
+            with httpx.Client(
+                headers=_UPBIT_HEADERS,
+                timeout=_UPBIT_HTTP_TIMEOUT,
+                follow_redirects=True,
+            ) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as exc:  # pragma: no cover - requires network failure
+            httpx_error = exc
+
+    request = Request(url, headers=_UPBIT_HEADERS)
+    try:
+        with urlopen(request, timeout=_UPBIT_HTTP_TIMEOUT) as response:
+            raw = response.read().decode("utf-8")
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        error = httpx_error or exc
+        raise MarketDataError(f"업비트 API 요청이 실패했습니다: {error}") from error
+
+    if not raw:
+        raise MarketDataError("업비트에서 빈 응답을 받았습니다.")
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise MarketDataError("업비트 응답을 해석하지 못했습니다.") from exc
+
+
+if not _UPBIT_ENABLE_NETWORK:
+    _mark_network(
+        "down",
+        message="환경 설정에서 업비트 네트워크가 비활성화되어 시뮬레이션 데이터만 사용합니다.",
+        detail="UPBIT_ENABLE_NETWORK=0",
+    )
 
 
 def fetch_upbit_candles(
@@ -280,7 +392,14 @@ def fetch_upbit_candles(
     count = max(10, min(count, 200))
     if _upbit_network_down():
         synthetic = generate_synthetic_prices(days=count)
-        return MarketData(candles=synthetic, source="synthetic")
+        state = get_upbit_network_state()
+        return MarketData(
+            candles=synthetic,
+            source="synthetic",
+            status=state["status"],
+            message=state["message"],
+            detail=state.get("detail"),
+        )
 
     interval_path, unit = _INTERVAL_PATHS[interval]
     if unit:
@@ -288,25 +407,26 @@ def fetch_upbit_candles(
     else:
         path = f"/v1/candles/{interval_path}"
 
-    query = urlencode({"market": market, "count": count})
-    url = f"{_UPBIT_API_BASE}{path}?{query}"
-    request = Request(url, headers=_UPBIT_HEADERS)
-
     try:
-        with urlopen(request, timeout=5) as response:
-            raw = response.read().decode("utf-8")
-            if not raw:
-                raise MarketDataError("업비트에서 빈 응답을 받았습니다.")
-            payload = json.loads(raw)
-    except (HTTPError, URLError, TimeoutError, OSError):  # pragma: no cover - integration failures
-        _mark_network("down")
+        payload = _request_upbit(path, {"market": market, "count": count})
+    except MarketDataError as exc:
+        detail = _describe_error(exc)
+        _mark_network(
+            "down",
+            message="업비트 캔들 데이터를 가져오지 못해 시뮬레이션 시세를 사용합니다.",
+            detail=detail,
+        )
         synthetic = generate_synthetic_prices(days=count)
-        return MarketData(candles=synthetic, source="synthetic")
-    except json.JSONDecodeError as exc:
-        _mark_network("down")
-        raise MarketDataError("업비트 응답을 해석하지 못했습니다.") from exc
+        state = get_upbit_network_state()
+        return MarketData(
+            candles=synthetic,
+            source="synthetic",
+            status=state["status"],
+            message=state["message"],
+            detail=state.get("detail"),
+        )
     else:
-        _mark_network("up")
+        _mark_network("up", message="업비트 실시간 캔들 데이터를 사용 중입니다.")
 
     if not isinstance(payload, Iterable):
         raise MarketDataError("업비트 응답 형식이 올바르지 않습니다.")
@@ -332,7 +452,14 @@ def fetch_upbit_candles(
         candles.append(candle)
 
     candles.reverse()  # Upbit returns newest first
-    return MarketData(candles=candles, source="upbit")
+    state = get_upbit_network_state()
+    return MarketData(
+        candles=candles,
+        source="upbit",
+        status=state["status"],
+        message=state["message"],
+        detail=state.get("detail"),
+    )
 
 
 def _fallback_markets(only_krw: bool) -> List[MarketInfo]:
@@ -345,25 +472,38 @@ def fetch_upbit_markets(*, only_krw: bool = True) -> MarketList:
     """Return tradable markets from Upbit or a deterministic fallback list."""
 
     if _upbit_network_down():
-        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
-
-    url = f"{_UPBIT_API_BASE}/v1/market/all?isDetails=true"
-    request = Request(url, headers=_UPBIT_HEADERS)
+        state = get_upbit_network_state()
+        return MarketList(
+            markets=_fallback_markets(only_krw),
+            source="fallback",
+            status=state["status"],
+            message=state["message"],
+            detail=state.get("detail"),
+            checked_at=state.get("checked_at"),
+            backoff_seconds_remaining=state["backoff_seconds_remaining"],
+        )
 
     try:
-        with urlopen(request, timeout=5) as response:
-            raw = response.read().decode("utf-8")
-            if not raw:
-                raise MarketDataError("업비트에서 빈 마켓 목록을 받았습니다.")
-            payload = json.loads(raw)
-    except (HTTPError, URLError, TimeoutError, OSError):  # pragma: no cover - network failure
-        _mark_network("down")
-        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
-    except json.JSONDecodeError:  # pragma: no cover - malformed upstream response
-        _mark_network("down")
-        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+        payload = _request_upbit("/v1/market/all", {"isDetails": "true"})
+    except MarketDataError as exc:
+        detail = _describe_error(exc)
+        _mark_network(
+            "down",
+            message="업비트 마켓 목록을 가져오지 못해 내장 디렉터리를 사용합니다.",
+            detail=detail,
+        )
+        state = get_upbit_network_state()
+        return MarketList(
+            markets=_fallback_markets(only_krw),
+            source="fallback",
+            status=state["status"],
+            message=state["message"],
+            detail=state.get("detail"),
+            checked_at=state.get("checked_at"),
+            backoff_seconds_remaining=state["backoff_seconds_remaining"],
+        )
     else:
-        _mark_network("up")
+        _mark_network("up", message="업비트 실시간 마켓 디렉터리를 사용 중입니다.")
 
     markets: List[MarketInfo] = []
     for item in payload:
@@ -390,9 +530,27 @@ def fetch_upbit_markets(*, only_krw: bool = True) -> MarketList:
         )
 
     if not markets:
-        return MarketList(markets=_fallback_markets(only_krw), source="fallback")
+        state = get_upbit_network_state()
+        return MarketList(
+            markets=_fallback_markets(only_krw),
+            source="fallback",
+            status=state["status"],
+            message="업비트 응답이 비어 있어 내장 목록을 사용합니다.",
+            detail=state.get("detail"),
+            checked_at=state.get("checked_at"),
+            backoff_seconds_remaining=state["backoff_seconds_remaining"],
+        )
 
-    return MarketList(markets=markets, source="upbit")
+    state = get_upbit_network_state()
+    return MarketList(
+        markets=markets,
+        source="upbit",
+        status=state["status"],
+        message=state["message"],
+        detail=state.get("detail"),
+        checked_at=state.get("checked_at"),
+        backoff_seconds_remaining=state["backoff_seconds_remaining"],
+    )
 
 
 def build_market_insights(

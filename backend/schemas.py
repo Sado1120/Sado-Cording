@@ -293,6 +293,10 @@ class MarketCandlesResponse(BaseModel):
     interval: str
     source: Literal["upbit", "synthetic"]
     candles: List[CandlePayload]
+    status: str = "unknown"
+    message: str = ""
+    detail: Optional[str] = None
+    checked_at: Optional[datetime] = None
 
 
 class MarketInfoPayload(BaseModel):
@@ -317,6 +321,11 @@ class MarketListResponse(BaseModel):
     source: Literal["upbit", "fallback"]
     markets: List[MarketInfoPayload]
     groups: List[MarketGroupPayload] = Field(default_factory=list)
+    status: str = "unknown"
+    message: str = ""
+    detail: Optional[str] = None
+    checked_at: Optional[datetime] = None
+    backoff_seconds_remaining: float = 0.0
 
 
 class MarketRecommendationPayload(BaseModel):

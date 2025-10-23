@@ -80,6 +80,7 @@ from .market import (
     fetch_authoritative_news,
     fetch_upbit_candles,
     fetch_upbit_markets,
+    get_upbit_network_state,
 )
 
 
@@ -749,6 +750,11 @@ def list_markets(only_krw: bool = True) -> MarketListResponse:
         source=listing.source,
         markets=markets,
         groups=_build_market_groups(markets),
+        status=listing.status,
+        message=listing.message,
+        detail=listing.detail,
+        checked_at=listing.checked_at,
+        backoff_seconds_remaining=listing.backoff_seconds_remaining,
     )
 
 
@@ -1070,11 +1076,16 @@ def get_upbit_candles(
         for item in data.candles
     ]
 
+    network_state = get_upbit_network_state()
     return MarketCandlesResponse(
         market=market.upper(),
         interval=interval,
         source=data.source,
         candles=candles,
+        status=data.status or network_state["status"],
+        message=data.message or network_state["message"],
+        detail=data.detail or network_state.get("detail"),
+        checked_at=network_state.get("checked_at"),
     )
 
 

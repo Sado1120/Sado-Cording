@@ -23,13 +23,17 @@ import backend.app as app_module
 
 
 def test_fetch_upbit_candles_fallback(monkeypatch):
-    def raise_error(*args, **kwargs):
-        raise OSError("network down")
+    import backend.market as market_module
 
-    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("network down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
     data = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
     assert data.source == "synthetic"
     assert len(data.candles) == 20
+    assert data.status == "down"
+    assert "시세" in data.message
 
 
 def test_fetch_upbit_candles_offline_mode(monkeypatch):
@@ -39,9 +43,11 @@ def test_fetch_upbit_candles_offline_mode(monkeypatch):
     module = importlib.reload(__import__("backend.market", fromlist=["*"]))
     data = module.fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
     assert data.source == "synthetic"
+    assert data.status == "down"
 
     listing = module.fetch_upbit_markets()
     assert listing.source == "fallback"
+    assert listing.status == "down"
 
     # Restore module state for other tests
     monkeypatch.delenv("UPBIT_ENABLE_NETWORK")
@@ -58,15 +64,19 @@ def test_build_market_insights_from_synthetic():
 
 
 def test_fetch_upbit_markets_fallback(monkeypatch):
-    def raise_error(*args, **kwargs):
-        raise OSError("down")
+    import backend.market as market_module
 
-    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
     listing = fetch_upbit_markets()
     assert listing.source == "fallback"
     assert listing.markets
     assert len(listing.markets) >= 100
     assert all(market.market.startswith("KRW-") for market in listing.markets)
+    assert listing.status == "down"
+    assert "내장" in listing.message
 
 
 def test_fetch_authoritative_news_fallback(monkeypatch):
@@ -186,6 +196,8 @@ def test_market_endpoints(monkeypatch):
     assert markets_response.groups
     group_keys = {group.key for group in markets_response.groups}
     assert "krw" in group_keys
+    assert markets_response.status == "unknown"
+    assert markets_response.message == ""
 
 
 def test_market_recommendations_endpoint(monkeypatch):
