@@ -346,35 +346,48 @@ def _request_upbit(path: str, params: Optional[Dict[str, object]] = None) -> Any
     query = urlencode(params or {})
     url = f"{_UPBIT_API_BASE}{path}{f'?{query}' if query else ''}"
 
-    httpx_error: Optional[BaseException] = None
-    if httpx is not None:
+    attempts = 3
+    last_error: Optional[BaseException] = None
+
+    for attempt in range(1, attempts + 1):
+        httpx_error: Optional[BaseException] = None
+        if httpx is not None:
+            try:
+                with httpx.Client(
+                    headers=_UPBIT_HEADERS,
+                    timeout=_UPBIT_HTTP_TIMEOUT,
+                    follow_redirects=True,
+                ) as client:
+                    response = client.get(url)
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.HTTPError as exc:  # pragma: no cover - requires network failure
+                httpx_error = exc
+
+        request = Request(url, headers=_UPBIT_HEADERS)
         try:
-            with httpx.Client(
-                headers=_UPBIT_HEADERS,
-                timeout=_UPBIT_HTTP_TIMEOUT,
-                follow_redirects=True,
-            ) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                return response.json()
-        except httpx.HTTPError as exc:  # pragma: no cover - requires network failure
-            httpx_error = exc
+            with urlopen(request, timeout=_UPBIT_HTTP_TIMEOUT) as response:
+                raw = response.read().decode("utf-8")
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            last_error = httpx_error or exc
+        else:
+            if not raw:
+                last_error = MarketDataError("업비트에서 빈 응답을 받았습니다.")
+            else:
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    last_error = exc
 
-    request = Request(url, headers=_UPBIT_HEADERS)
-    try:
-        with urlopen(request, timeout=_UPBIT_HTTP_TIMEOUT) as response:
-            raw = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
-        error = httpx_error or exc
-        raise MarketDataError(f"업비트 API 요청이 실패했습니다: {error}") from error
+        if attempt < attempts:
+            # 짧은 네트워크 오류로 인한 오탐지를 줄이기 위해 약간의 대기 후 재시도한다.
+            time.sleep(min(1.0, 0.3 * attempt))
 
-    if not raw:
-        raise MarketDataError("업비트에서 빈 응답을 받았습니다.")
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise MarketDataError("업비트 응답을 해석하지 못했습니다.") from exc
+    if last_error is None:
+        last_error = RuntimeError("업비트 API 요청이 반복해서 실패했습니다.")
+    raise MarketDataError(
+        f"업비트 API 요청이 반복해서 실패했습니다 ({attempts}회 시도)."
+    ) from last_error
 
 
 if not _UPBIT_ENABLE_NETWORK:

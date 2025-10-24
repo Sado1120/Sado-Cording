@@ -8,6 +8,7 @@ import json as jsonlib
 from fastapi import HTTPException
 
 from backend import notifications
+import backend.app as app_module
 from backend.app import post_chat_notification
 from backend.schemas import ChatNotificationRequest
 
@@ -141,6 +142,26 @@ def test_notify_on_change_deduplicates(monkeypatch):
     assert second is False
     assert third is True
     assert sent == ["KRW-BTC 매수 집중", "KRW-ETH 관망"]
+
+
+def test_push_chat_summary_filters_non_critical(monkeypatch):
+    reset_chat_state()
+    captured: list[tuple[str, str]] = []
+
+    def fake_notify(key: str, message: str):
+        captured.append((key, message))
+        return True
+
+    monkeypatch.setattr(app_module.notifications, "notify_synology_chat_on_change", fake_notify)
+
+    app_module._push_chat_summary("ai-copilot", "[AI 코파일럿] KRW-BTC 분석")
+    assert captured == []
+
+    app_module._push_chat_summary("autopilot-status", "[오토파일럿] ON | 시장 KRW-BTC")
+    assert captured == []
+
+    app_module._push_chat_summary("autopilot-status", "[오토파일럿] 최근 체결 매수 체결")
+    assert captured == [("autopilot-status", "[오토파일럿] 최근 체결 매수 체결")]
 
 
 def test_resolve_webhook_url_reads_env_file(tmp_path, monkeypatch):

@@ -92,6 +92,39 @@ def test_fetch_upbit_markets_fallback(monkeypatch):
     assert "내장" in listing.message
 
 
+def test_request_upbit_retries_before_failing(monkeypatch):
+    import backend.market as market_module
+
+    monkeypatch.setattr(market_module, "httpx", None)
+    attempts = {"count": 0}
+
+    class DummyStream:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload
+
+        def __enter__(self):  # noqa: D401 - context manager protocol
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: D401 - context manager protocol
+            return False
+
+        def read(self) -> bytes:
+            return self._payload.encode("utf-8")
+
+    def fake_urlopen(request, timeout=None):  # noqa: ARG001
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise market_module.URLError("temporary failure")
+        return DummyStream('{"status": "ok"}')
+
+    monkeypatch.setattr(market_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(market_module.time, "sleep", lambda _s: None)
+
+    payload = market_module._request_upbit("/v1/status", None)  # type: ignore[attr-defined]
+    assert payload == {"status": "ok"}
+    assert attempts["count"] == 3
+
+
 def test_fetch_authoritative_news_fallback(monkeypatch):
     def raise_error(*args, **kwargs):
         raise OSError("timeout")

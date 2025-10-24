@@ -453,8 +453,20 @@ def _summarise_autopilot_status_for_chat(payload: AutoPilotStatusResponse) -> Op
     return "[오토파일럿] " + " | ".join(parts)
 
 
+_CRITICAL_CHAT_SUMMARY_KEYS = {"autopilot-status"}
+_CRITICAL_CHAT_KEYWORDS = ("체결", "경고", "실패", "오류", "중지", "시작")
+
+
+def _is_critical_chat_summary(key: str, message: Optional[str]) -> bool:
+    if not message:
+        return False
+    if key not in _CRITICAL_CHAT_SUMMARY_KEYS:
+        return False
+    return any(keyword in message for keyword in _CRITICAL_CHAT_KEYWORDS)
+
+
 def _push_chat_summary(key: str, message: Optional[str]) -> None:
-    if message:
+    if _is_critical_chat_summary(key, message):
         notifications.notify_synology_chat_on_change(key, message)
 
 
