@@ -69,6 +69,8 @@ from .schemas import (
     MarketGroupPayload,
     MarketRecommendationsResponse,
     MarketRecommendationPayload,
+    LossRecoveryPlaybookResponse,
+    LossRecoveryStepPayload,
 )
 from .execution import (
     ExecutionError,
@@ -196,6 +198,32 @@ def _sanitize_risk_payload(risk: ai.RiskControlAdvice) -> RiskControlAdvicePaylo
         position_size_pct=_safe_number(risk.position_size_pct, lower=0.0),
         confidence_note=risk.confidence_note,
         notes=list(risk.notes),
+    )
+
+
+def _sanitize_loss_recovery_step(step: ai.LossRecoveryStep) -> LossRecoveryStepPayload:
+    return LossRecoveryStepPayload(
+        title=step.title,
+        objective=step.objective,
+        threshold_pct=_safe_number(step.threshold_pct, lower=0.0),
+        actions=list(step.actions),
+        guardrails=list(step.guardrails),
+        metrics={key: _safe_number(value) for key, value in step.metrics.items()},
+    )
+
+
+def _serialize_loss_playbook(plan: ai.LossRecoveryPlaybook) -> LossRecoveryPlaybookResponse:
+    return LossRecoveryPlaybookResponse(
+        generated_at=_ensure_utc(plan.generated_at),
+        realized_loss_krw=_safe_number(plan.realized_loss_krw),
+        unrealized_loss_krw=_safe_number(plan.unrealized_loss_krw),
+        loss_markets=list(plan.loss_markets),
+        recovery_horizon=plan.recovery_horizon,
+        steps=[_sanitize_loss_recovery_step(step) for step in plan.steps],
+        risk_commandments=list(plan.risk_commandments),
+        chart_playbook=list(plan.chart_playbook),
+        institutional_briefs=list(plan.institutional_briefs),
+        proprietary_edge=plan.proprietary_edge,
     )
 
 
@@ -1294,6 +1322,32 @@ def get_market_intelligence(
         "market-intelligence",
         _summarise_market_intelligence_for_chat(response),
     )
+    return response
+
+
+@app.get("/ai/risk/playbook", response_model=LossRecoveryPlaybookResponse)
+def get_loss_recovery_playbook() -> LossRecoveryPlaybookResponse:
+    state = _auto_trader.status()
+    try:
+        headlines = fetch_authoritative_news(limit=5)
+    except MarketDataError:
+        headlines = []
+
+    plan = ai.build_loss_recovery_playbook(
+        orders=list(_paper_broker.orders),
+        positions=list(_paper_broker.positions.values()),
+        executions=state.executions,
+        last_insight=state.last_insight,
+        news_items=headlines,
+    )
+
+    response = _serialize_loss_playbook(plan)
+    summary = (
+        f"손실 복구 플레이북 · 실현 {response.realized_loss_krw:,.0f} KRW / 미실현 {response.unrealized_loss_krw:,.0f} KRW"
+        if (response.realized_loss_krw or response.unrealized_loss_krw)
+        else "손실 복구 플레이북 · 현재 손실 없음"
+    )
+    _push_chat_summary("loss-recovery", summary)
     return response
 
 

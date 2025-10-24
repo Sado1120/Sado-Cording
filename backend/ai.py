@@ -160,6 +160,34 @@ class AssistantSynthesis:
     generated_at: datetime
 
 
+@dataclass
+class LossRecoveryStep:
+    """Actionable step for converting drawdowns back to profit."""
+
+    title: str
+    objective: str
+    threshold_pct: float
+    actions: List[str]
+    guardrails: List[str]
+    metrics: Dict[str, float]
+
+
+@dataclass
+class LossRecoveryPlaybook:
+    """Holistic plan describing how to recover from losses safely."""
+
+    generated_at: datetime
+    realized_loss_krw: float
+    unrealized_loss_krw: float
+    loss_markets: List[str]
+    recovery_horizon: str
+    steps: List[LossRecoveryStep]
+    risk_commandments: List[str]
+    chart_playbook: List[str]
+    institutional_briefs: List[str]
+    proprietary_edge: str
+
+
 _MIN_CANDLES = 30
 
 _ANNUALISATION_FACTORS = {
@@ -1314,4 +1342,191 @@ def generate_assistant_synthesis(
         risk_notices=risk_notices,
         autopilot=autopilot if include_autopilot else None,
         generated_at=datetime.now(timezone.utc),
+    )
+
+
+def build_loss_recovery_playbook(
+    *,
+    orders: Sequence[object],
+    positions: Sequence[object],
+    executions: Optional[Sequence[object]] = None,
+    last_insight: Optional[MarketAIInsight] = None,
+    news_items: Optional[Sequence[Dict[str, str]]] = None,
+) -> LossRecoveryPlaybook:
+    """Synthesize a risk playbook that converts losses into a recovery roadmap."""
+
+    now = datetime.now(timezone.utc)
+    realized_loss = 0.0
+    unrealized_loss = 0.0
+    loss_markets: Dict[str, float] = defaultdict(float)
+    loss_pct_values: List[float] = []
+
+    for order in orders:
+        market = str(getattr(order, "market", "KRW-BTC")).upper()
+        pnl = float(getattr(order, "realized_pnl", 0.0) or 0.0)
+        price = float(getattr(order, "price", 0.0) or 0.0)
+        volume = float(getattr(order, "volume", 0.0) or 0.0)
+        notional = abs(price * volume)
+        if pnl < 0:
+            realized_loss += -pnl
+            loss_markets[market] += -pnl
+            if notional > 1e-9:
+                loss_pct_values.append(pnl / notional * 100)
+
+    for position in positions:
+        market = str(getattr(position, "market", "KRW-BTC")).upper()
+        pnl = float(getattr(position, "unrealized_pnl", 0.0) or 0.0)
+        if pnl < 0:
+            unrealized_loss += -pnl
+            loss_markets[market] += -pnl
+
+    total_loss = realized_loss + unrealized_loss
+    if total_loss > 5_000_000:
+        horizon = "장기 회복 (90일 이상)"
+    elif total_loss > 1_500_000:
+        horizon = "중기 회복 (30~60일)"
+    elif total_loss > 0:
+        horizon = "단기 회복 (14~21일)"
+    else:
+        horizon = "예방 중심 (손실 없음)"
+
+    average_loss_pct = abs(fmean(loss_pct_values)) if loss_pct_values else 0.0
+    worst_loss_pct = abs(min(loss_pct_values)) if loss_pct_values else 0.0
+    loss_market_list = [market for market, _ in sorted(loss_markets.items(), key=lambda item: item[1], reverse=True)]
+
+    insight_metrics = last_insight.metrics if last_insight else None
+    chart_playbook: List[str] = []
+    if insight_metrics:
+        chart_playbook.append(
+            f"EMA {insight_metrics.fast_ema:.2f}/{insight_metrics.slow_ema:.2f} · 추세 강도 {insight_metrics.trend_strength:.2f}"
+        )
+        chart_playbook.append(
+            f"RSI {insight_metrics.rsi:.1f} · 허스트 {insight_metrics.hurst_exponent:.2f} · ATR {insight_metrics.atr:.2f}"
+        )
+        chart_playbook.append(
+            f"MACD {insight_metrics.macd:.2f} vs 시그널 {insight_metrics.macd_signal:.2f} · 변동성 {insight_metrics.volatility_pct:.2f}%"
+        )
+    else:
+        chart_playbook = [
+            "EMA·RSI·ATR 조합으로 추세/변동성 확인",
+            "손절은 최근 스윙 저점, 익절은 2R 이상으로 설정",
+        ]
+
+    if insight_metrics and insight_metrics.breakout_probability > 0:
+        chart_playbook.append(
+            f"돌파 확률 {insight_metrics.breakout_probability * 100:.1f}% 구간에서 포지션 스케일링"
+        )
+
+    executions_count = len(executions or [])
+
+    base_guardrail = max(5.0, worst_loss_pct or 5.0)
+    dynamic_risk = max(2.5, average_loss_pct * 1.5 if average_loss_pct else 3.0)
+
+    steps: List[LossRecoveryStep] = [
+        LossRecoveryStep(
+            title="손실 구조 정밀 진단",
+            objective="누적 손실의 원인·시장·전략 패턴을 파악합니다.",
+            threshold_pct=base_guardrail,
+            actions=[
+                "손실 발생 상위 종목 재평가 및 불필요 포지션 축소",
+                "실거래·페이퍼 손실 전환율을 분석해 전략별 성과를 분리",
+                "관망 중인 오토파일럿 루프 로그를 검토하고 오류를 제거",
+            ],
+            guardrails=[
+                "손실 확정 전 추가 매수 금지",
+                "손절 재설정은 ATR x 1.5 이상 여유 확보",
+            ],
+            metrics={
+                "loss_markets": float(len(loss_market_list)),
+                "worst_loss_pct": float(worst_loss_pct),
+                "average_loss_pct": float(average_loss_pct),
+            },
+        ),
+        LossRecoveryStep(
+            title="리스크 버짓 재편성과 재진입 조건",
+            objective="현금흐름을 방어하고 손실을 보전할 트레이딩 창을 정의합니다.",
+            threshold_pct=dynamic_risk,
+            actions=[
+                "자본 대비 포지션 규모를 1회 2% 이하로 축소",
+                "손실 종목은 EMA 재돌파 또는 RSI 50 상향 시점에만 재진입",
+                "기관 뉴스 기반 모멘텀 이벤트(ETF 유입·규제 이슈) 체크",
+            ],
+            guardrails=[
+                "재진입 전 동일 손실 종목 2회 연속 양봉 확인",
+                "위험 노출 시간(Time-in-Market)을 45% 이하로 유지",
+            ],
+            metrics={
+                "executions_reviewed": float(executions_count),
+                "risk_budget_pct": float(dynamic_risk),
+            },
+        ),
+        LossRecoveryStep(
+            title="AI 하이브리드 공략 전략",
+            objective="AI 추천 TOP5·기관 데이터·멀티타임프레임을 결합한 천재 투자 알고리즘 가동",
+            threshold_pct=max(8.0, dynamic_risk * 1.5),
+            actions=[
+                "AI 추천 TOP5 중 모멘텀·기본면 우수 종목 2~3개 선정",
+                "다중 타임프레임 합의도가 65% 이상일 때만 순차 매수",
+                "Synology Chat 알림을 통해 실시간 리스크·성과 모니터",
+            ],
+            guardrails=[
+                "추세 확률이 55% 미만이면 자동 관망",
+                "기관 센티먼트 40% 이하 종목은 공격 비중 축소",
+            ],
+            metrics={
+                "trend_probability": float(
+                    (insight_metrics.probability_of_trend * 100)
+                    if (insight_metrics and insight_metrics.probability_of_trend is not None)
+                    else 0.0
+                ),
+                "institutional_sentiment": float(
+                    (insight_metrics.institutional_sentiment * 100)
+                    if (insight_metrics and insight_metrics.institutional_sentiment is not None)
+                    else 0.0
+                ),
+            },
+        ),
+    ]
+
+    risk_commandments = [
+        "한 종목 최대 손실 5% 이내, 계좌 손실 12% 돌파 시 즉시 관망",
+        "손실 전환을 위한 승률·손익비 점검: 최소 승률 45% + 기대수익 1.5R 확보",
+        "포트폴리오 안정: 미국 ETF 60%, 코인 40% 내에서 공격 비중 자동 조정",
+    ]
+
+    if insight_metrics:
+        risk_commandments.append(
+            f"현재 변동성 {insight_metrics.volatility_pct:.2f}% · ATR {insight_metrics.atr:.2f} 기준으로 손절 폭 재조정"
+        )
+
+    institutional_briefs: List[str] = []
+    for item in news_items or []:
+        source = item.get("source") or "기관 리서치"
+        title = item.get("title") or item.get("summary") or "시장 브리핑"
+        institutional_briefs.append(f"{source}: {title}")
+
+    if not institutional_briefs:
+        institutional_briefs.append("신뢰 가능한 기관 헤드라인 미확보 · 자체 리서치 강화 필요")
+
+    proprietary_edge_parts = [
+        "EMA·RSI·ATR 기반 차트 분석",
+        "기관 뉴스 및 센티먼트 필터",
+        "AI 추천 TOP5 & 자동 포트폴리오 회전",
+    ]
+    proprietary_edge = " + ".join(proprietary_edge_parts)
+
+    if insight_metrics:
+        proprietary_edge += f" · 추세확률 {insight_metrics.probability_of_trend * 100:.1f}% 기반 동적 포지셔닝"
+
+    return LossRecoveryPlaybook(
+        generated_at=now,
+        realized_loss_krw=realized_loss,
+        unrealized_loss_krw=unrealized_loss,
+        loss_markets=loss_market_list,
+        recovery_horizon=horizon,
+        steps=steps,
+        risk_commandments=risk_commandments,
+        chart_playbook=chart_playbook,
+        institutional_briefs=institutional_briefs,
+        proprietary_edge=proprietary_edge,
     )

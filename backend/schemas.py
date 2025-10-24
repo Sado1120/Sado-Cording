@@ -457,6 +457,28 @@ class MarketAIResponse(BaseModel):
     institutional_commentary: str
 
 
+class LossRecoveryStepPayload(BaseModel):
+    title: str
+    objective: str
+    threshold_pct: float
+    actions: List[str]
+    guardrails: List[str]
+    metrics: Dict[str, float]
+
+
+class LossRecoveryPlaybookResponse(BaseModel):
+    generated_at: datetime
+    realized_loss_krw: float
+    unrealized_loss_krw: float
+    loss_markets: List[str]
+    recovery_horizon: str
+    steps: List[LossRecoveryStepPayload]
+    risk_commandments: List[str]
+    chart_playbook: List[str]
+    institutional_briefs: List[str]
+    proprietary_edge: str
+
+
 class PortfolioAssetInput(BaseModel):
     symbol: str = Field(..., min_length=1)
     name: Optional[str] = None

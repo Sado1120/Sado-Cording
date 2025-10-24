@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from backend import ai
 from backend.trading import generate_synthetic_prices
 
@@ -103,3 +104,59 @@ def test_assistant_synthesis_provides_actions_and_risk():
 
     assert synthesis_no_auto.autopilot is None
     assert any("오토파일럿" in step for step in synthesis_no_auto.next_steps)
+
+
+def test_loss_recovery_playbook_surfaces_risk_guidance():
+    candles = generate_synthetic_prices(days=90, seed=512)
+    insight = ai.analyse_market(candles, market="KRW-SOL", interval="minute60", news=[])
+
+    orders = [
+        SimpleNamespace(
+            market="KRW-SOL",
+            realized_pnl=-180_000.0,
+            price=30_000.0,
+            volume=6.0,
+        ),
+        SimpleNamespace(
+            market="KRW-BTC",
+            realized_pnl=90_000.0,
+            price=31_000_000.0,
+            volume=0.003,
+        ),
+    ]
+
+    class _DummyPosition:
+        def __init__(self, market: str, average_price: float, market_price: float, volume: float) -> None:
+            self.market = market
+            self.average_price = average_price
+            self.market_price = market_price
+            self.volume = volume
+
+        @property
+        def unrealized_pnl(self) -> float:
+            return (self.market_price - self.average_price) * self.volume
+
+    positions = [
+        _DummyPosition("KRW-XRP", average_price=700.0, market_price=640.0, volume=400.0),
+    ]
+
+    executions = [
+        SimpleNamespace(mode="paper", market="KRW-SOL", side="bid", price=31_000.0, volume=5.0),
+    ]
+
+    plan = ai.build_loss_recovery_playbook(
+        orders=orders,
+        positions=positions,
+        executions=executions,
+        last_insight=insight,
+        news_items=[{"source": "테스트 기관", "title": "시장 모니터링 강화"}],
+    )
+
+    assert plan.realized_loss_krw > 0
+    assert plan.unrealized_loss_krw > 0
+    assert plan.loss_markets and "KRW-SOL" in plan.loss_markets
+    assert any(step.actions for step in plan.steps)
+    assert any(step.guardrails for step in plan.steps)
+    assert plan.risk_commandments
+    assert plan.chart_playbook
+    assert plan.institutional_briefs
