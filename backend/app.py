@@ -857,6 +857,8 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         price_source=price_source,
         price_message=price_message,
         price_detail=price_detail,
+        integrity_score=report.integrity_score,
+        integrity_flags=report.integrity_flags,
     )
 
     if response.price_source != "upbit":
@@ -865,6 +867,14 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
             response.price_message = f"{response.price_message} {caution}"
         else:
             response.price_message = caution
+
+    if response.integrity_score < 60:
+        summary = ", ".join(response.integrity_flags) if response.integrity_flags else "세부 사유 없음"
+        warning = f"데이터 무결성 점수 {response.integrity_score:.0f}점: {summary}"
+        if response.price_message:
+            response.price_message = f"{response.price_message} {warning}"
+        else:
+            response.price_message = warning
 
     _push_chat_summary("strategy-sim", _summarise_simulation_for_chat(response))
     return response

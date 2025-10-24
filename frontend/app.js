@@ -304,6 +304,8 @@ const endingEquityEl = document.getElementById("metric-ending-equity");
 const profitKrwEl = document.getElementById("metric-profit-krw");
 const marketNoteEl = document.getElementById("metric-market-note");
 const priceSourceEl = document.getElementById("metric-price-source");
+const integrityScoreEl = document.getElementById("metric-integrity-score");
+const integrityFlagsEl = document.getElementById("metric-integrity-flags");
 
 const totalReturnEl = document.getElementById("metric-total-return");
 const annualReturnEl = document.getElementById("metric-annual-return");
@@ -335,6 +337,47 @@ const recommendationsUpdatedEl = document.getElementById("recommendations-update
 const recommendationsSourceEl = document.getElementById("recommendations-source");
 const recommendationsRefreshBtn = document.getElementById("recommendations-refresh");
 const recommendationsErrorsEl = document.getElementById("recommendations-errors");
+
+const resetIntegrityBadge = () => {
+  if (!integrityScoreEl || !integrityFlagsEl) return;
+  integrityScoreEl.dataset.status = "loading";
+  integrityScoreEl.textContent = "점검 중";
+  integrityFlagsEl.textContent = "-";
+  integrityFlagsEl.classList.add("muted");
+};
+
+const updateIntegrityBadge = (report) => {
+  if (!integrityScoreEl || !integrityFlagsEl) return;
+  if (!report || typeof report.integrity_score !== "number") {
+    resetIntegrityBadge();
+    return;
+  }
+
+  const score = Number(report.integrity_score);
+  let status = "online";
+  if (!Number.isFinite(score)) {
+    resetIntegrityBadge();
+    return;
+  }
+  if (score < 40) {
+    status = "offline";
+  } else if (score < 70) {
+    status = "warning";
+  }
+
+  integrityScoreEl.dataset.status = status;
+  integrityScoreEl.textContent = `${Math.round(score)}점`;
+
+  if (Array.isArray(report.integrity_flags) && report.integrity_flags.length > 0) {
+    integrityFlagsEl.textContent = report.integrity_flags.join(" · ");
+    integrityFlagsEl.classList.remove("muted");
+  } else {
+    integrityFlagsEl.textContent = "이상 없음";
+    integrityFlagsEl.classList.add("muted");
+  }
+};
+
+resetIntegrityBadge();
 
 const FALLBACK_MARKET_ROWS = [
   ["KRW-BTC", "비트코인", "Bitcoin"],
@@ -558,6 +601,11 @@ const paperMarkMarketInput = document.getElementById("paper-mark-market");
 const paperMarkPriceInput = document.getElementById("paper-mark-price");
 const paperHeartbeatEl = document.getElementById("paper-heartbeat");
 const paperPriceSourceEl = document.getElementById("paper-price-source");
+const paperHardResetBtn = document.getElementById("paper-hard-reset-btn");
+const paperResetDialog = document.getElementById("paper-reset-dialog");
+const paperResetConfirmBtn = document.getElementById("paper-reset-confirm");
+const paperResetCancelBtn = document.getElementById("paper-reset-cancel");
+const paperResetDialogMessage = paperResetDialog?.querySelector("p");
 const liveBalanceBtn = document.getElementById("live-balance-btn");
 const liveBalanceOutput = document.getElementById("live-balance-output");
 const alphaBriefingEl = document.getElementById("alpha-briefing");
@@ -3170,6 +3218,7 @@ function updateCapitalSummary(report) {
 
 function updateMetrics(report) {
   updateCapitalSummary(report);
+  updateIntegrityBadge(report);
   const factual = isFactualReport(report);
   if (!factual) {
     disableMetric(totalReturnEl, "실시간 시세 없음");
@@ -3494,6 +3543,7 @@ async function handleSimulation(event) {
     renderEquityCurve(report.equity_curve);
   } catch (error) {
     updateEquityNote([]);
+    resetIntegrityBadge();
     alert(error.message);
   }
 }
@@ -3795,6 +3845,52 @@ const handleOrderSubmit = async (event) => {
   }
 };
 
+const performPaperReset = async (initialCash, { successMessage = "페이퍼 계좌가 초기화되었습니다." } = {}) => {
+  if (!initialCash || initialCash <= 0) {
+    throw new Error("초기 자본을 올바르게 입력하세요.");
+  }
+
+  setPaperHeartbeat("loading", "리셋 중...");
+  try {
+    const balance = await requestApi("/trading/paper/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initial_cash: initialCash }),
+    });
+    updatePaperSummary(balance);
+    if (orderResultEl) {
+      orderResultEl.textContent = successMessage;
+    }
+    return balance;
+  } catch (error) {
+    if (paperSummaryEl) {
+      paperSummaryEl.innerHTML = `<p class="error">${error.message}</p>`;
+    }
+    setPaperHeartbeat("warning", "리셋 실패");
+    throw error;
+  }
+};
+
+let pendingPaperResetAmount = null;
+
+const openPaperResetDialog = (amount) => {
+  pendingPaperResetAmount = amount;
+  if (!paperResetDialog) return;
+  if (paperResetDialogMessage) {
+    paperResetDialogMessage.innerHTML = `현재 페이퍼 계좌를 <strong>${formatCurrencyWithSymbol(Math.round(amount))}</strong> 기준으로 초기화합니다. 계속하시겠습니까?`;
+  }
+  paperResetDialog.hidden = false;
+  paperResetDialog.classList.add("is-open");
+  paperResetConfirmBtn?.focus();
+};
+
+const closePaperResetDialog = () => {
+  pendingPaperResetAmount = null;
+  if (!paperResetDialog) return;
+  paperResetDialog.classList.remove("is-open");
+  paperResetDialog.hidden = true;
+};
+
 const handlePaperReset = async (event) => {
   event.preventDefault();
   if (!paperInitialCashInput) return;
@@ -3805,22 +3901,29 @@ const handlePaperReset = async (event) => {
     }
     return;
   }
-  setPaperHeartbeat("loading", "리셋 중...");
   try {
-    const balance = await requestApi("/trading/paper/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ initial_cash: initialCash }),
-    });
-    updatePaperSummary(balance);
-    if (orderResultEl) {
-      orderResultEl.textContent = "페이퍼 계좌가 초기화되었습니다.";
-    }
+    await performPaperReset(initialCash);
   } catch (error) {
-    if (paperSummaryEl) {
-      paperSummaryEl.innerHTML = `<p class="error">${error.message}</p>`;
-    }
-    setPaperHeartbeat("warning", "리셋 실패");
+    alert(error.message);
+  }
+};
+
+const handlePaperHardReset = () => {
+  const initialCash = parseNumeric(paperInitialCashInput?.value) || 20000000;
+  openPaperResetDialog(initialCash);
+};
+
+const handlePaperResetConfirm = async () => {
+  if (pendingPaperResetAmount === null) {
+    closePaperResetDialog();
+    return;
+  }
+  const amount = pendingPaperResetAmount;
+  closePaperResetDialog();
+  try {
+    await performPaperReset(amount, { successMessage: "페이퍼 계좌 전체 초기화가 완료되었습니다." });
+  } catch (error) {
+    alert(error.message);
   }
 };
 
@@ -3973,6 +4076,11 @@ aiPortfolioForm?.addEventListener("submit", handleAiPortfolio);
 copilotForm?.addEventListener("submit", handleCopilot);
 orderForm?.addEventListener("submit", handleOrderSubmit);
 paperResetForm?.addEventListener("submit", handlePaperReset);
+paperHardResetBtn?.addEventListener("click", handlePaperHardReset);
+paperResetConfirmBtn?.addEventListener("click", handlePaperResetConfirm);
+paperResetCancelBtn?.addEventListener("click", () => {
+  closePaperResetDialog();
+});
 paperRefreshBtn?.addEventListener("click", fetchPaperStatus);
 paperMarkForm?.addEventListener("submit", handlePaperMark);
 liveBalanceBtn?.addEventListener("click", handleLiveBalance);
@@ -4021,6 +4129,18 @@ navLinksList?.addEventListener("click", (event) => {
   if (link) {
     navLinksList.classList.remove("is-open");
     navToggleBtn?.setAttribute("aria-expanded", "false");
+  }
+});
+
+paperResetDialog?.addEventListener("click", (event) => {
+  if (event.target === paperResetDialog) {
+    closePaperResetDialog();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && paperResetDialog?.classList.contains("is-open")) {
+    closePaperResetDialog();
   }
 });
 aiRefreshBtn?.addEventListener("click", () => {

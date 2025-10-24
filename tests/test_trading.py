@@ -54,6 +54,8 @@ def test_run_ema_strategy_reports_risk_metrics():
     assert report.pain_index >= 0
     assert report.max_runup_pct >= 0
     assert report.average_drawdown_pct <= report.max_drawdown_pct + 1e-6
+    assert 0.0 <= report.integrity_score <= 100.0
+    assert isinstance(report.integrity_flags, list)
     assert set(report.monte_carlo_summary.keys()) == {
         "median_return_pct",
         "p05_return_pct",
@@ -82,6 +84,8 @@ def test_simulate_strategy_returns_profit_fields():
     assert response.profit_krw == pytest.approx(expected_profit)
     assert response.price_source in {"synthetic", "upbit", "manual"}
     assert response.market in {None, "KRW-BTC"}
+    assert 0 <= response.integrity_score <= 100
+    assert isinstance(response.integrity_flags, list)
 
 
 def test_rebalance_portfolio_orders_sum_to_zero():

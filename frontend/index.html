@@ -137,6 +137,11 @@
                   <small id="topline-autopilot-note" class="topline-status__note muted">최근 실행 정보 없음</small>
                   <small id="topline-autopilot-countdown" class="topline-status__countdown muted">예정 정보 없음</small>
                 </div>
+                <div class="topline-status__item topline-status__item--integrity">
+                  <span class="topline-status__label">데이터 무결성</span>
+                  <span id="metric-integrity-score" class="status-pill" data-status="loading">점검 중</span>
+                  <small id="metric-integrity-flags" class="topline-status__note muted">-</small>
+                </div>
                 <div class="topline-status__item">
                   <span class="topline-status__label">실시간 시세</span>
                   <span id="topline-live-status" class="status-pill" data-status="loading">동기화 중</span>
@@ -696,6 +701,7 @@
                 </label>
                 <button class="btn btn--accent btn--compact" type="submit">계좌 리셋</button>
               </form>
+              <button id="paper-hard-reset-btn" class="btn btn--danger btn--compact" type="button">전체 초기화</button>
               <form id="paper-mark-form" class="inline-form">
                 <label>
                   마켓
@@ -714,6 +720,19 @@
               <button id="live-balance-btn" class="btn btn--ghost btn--compact" type="button">잔고 조회</button>
               <pre id="live-balance-output">API 키 설정 후 잔고를 조회하세요.</pre>
             </article>
+          </div>
+          <div id="paper-reset-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="paper-reset-title" hidden>
+            <div class="modal__content">
+              <h4 id="paper-reset-title">페이퍼 계좌 전체 초기화</h4>
+              <p>
+                현재 페이퍼 계좌를 초기 자본으로 완전히 되돌립니다. 모든 포지션과 주문 기록이 삭제됩니다.
+                계속하시겠습니까?
+              </p>
+              <div class="modal__actions">
+                <button id="paper-reset-confirm" class="btn btn--danger" type="button">예, 초기화</button>
+                <button id="paper-reset-cancel" class="btn btn--ghost" type="button">아니요</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>

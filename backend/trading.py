@@ -1,7 +1,7 @@
 """Core trading and portfolio logic for the Sado Trade Bot project."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import math
@@ -83,6 +83,71 @@ class StrategyReport:
     pain_index: float
     max_runup_pct: float
     market: Optional[str] = None
+    integrity_score: float = 100.0
+    integrity_flags: List[str] = field(default_factory=list)
+
+
+def evaluate_candles_integrity(candles: Sequence[Candle]) -> Tuple[float, List[str]]:
+    """Return a (score, flags) pair describing data quality.
+
+    The score is scaled 0-100 with higher values indicating higher confidence.
+    Flags contain Korean descriptions suitable for UI display when anomalies
+    are detected so the dashboard can surface "허수" 가능성을 경고합니다.
+    """
+
+    if not candles:
+        return 0.0, ["데이터 없음"]
+
+    flags: List[str] = []
+    closes = [candle.close for candle in candles]
+    volumes = [candle.volume for candle in candles]
+
+    # Ensure time order and positive prices
+    timestamps = [candle.timestamp for candle in candles]
+    if timestamps != sorted(timestamps):
+        flags.append("시간 순서 이상")
+
+    if any(candle.close <= 0 or candle.open <= 0 for candle in candles):
+        flags.append("0 이하 가격 발견")
+
+    if any(candle.high < max(candle.open, candle.close) - 1e-6 for candle in candles):
+        flags.append("고가/저가 범위 오류")
+
+    if any(candle.low > min(candle.open, candle.close) + 1e-6 for candle in candles):
+        if "고가/저가 범위 오류" not in flags:
+            flags.append("고가/저가 범위 오류")
+
+    if any(volume is None or volume <= 0 for volume in volumes):
+        flags.append("거래량 없음")
+
+    if len(closes) >= 2:
+        previous = closes[0]
+        max_jump = 0.0
+        for current in closes[1:]:
+            if previous > 0:
+                jump = abs(current - previous) / previous
+                max_jump = max(max_jump, jump)
+            previous = current
+        if max_jump > 1.2:  # > 120% gap between candles is suspicious
+            flags.append("비정상 가격 점프")
+
+    try:
+        variance = statistics.pvariance(closes)
+    except statistics.StatisticsError:
+        variance = 0.0
+
+    mean_price = sum(closes) / len(closes)
+    if mean_price > 0:
+        dispersion = (variance ** 0.5) / mean_price
+        if dispersion < 1e-4:
+            flags.append("가격 변동성 부족")
+
+    if len(candles) < 20:
+        flags.append("이력 부족")
+
+    # Score deduction per anomaly (floor at 0, ceiling at 100)
+    score = max(0.0, 100.0 - 18.0 * len(flags))
+    return score, flags
 
 
 def generate_synthetic_prices(
@@ -261,6 +326,8 @@ def run_ema_strategy(
 
     if not candles:
         raise ValueError("candles must not be empty")
+
+    integrity_score, integrity_flags = evaluate_candles_integrity(candles)
 
     closes = [candle.close for candle in candles]
     fast = _ema(closes, fast_period)
@@ -629,6 +696,8 @@ def run_ema_strategy(
         pain_index=pain_index,
         max_runup_pct=max_runup_pct,
         market=market,
+        integrity_score=integrity_score,
+        integrity_flags=integrity_flags,
     )
 
 

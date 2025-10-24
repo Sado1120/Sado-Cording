@@ -115,6 +115,8 @@ class SimulationResponse(BaseModel):
     equity_curve: List[float]
     trade_summary: dict
     monte_carlo_summary: MonteCarloSummary
+    integrity_score: float = Field(ge=0, le=100, default=100.0)
+    integrity_flags: List[str] = Field(default_factory=list)
 
 
 class RebalanceRequest(BaseModel):

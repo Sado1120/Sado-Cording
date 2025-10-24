@@ -16,7 +16,9 @@ from .market import (
 )
 from .notifications import notify_synology_chat
 from .schemas import MarketRecommendationsResponse, OrderMode
-from .trading import Candle
+from .trading import Candle, evaluate_candles_integrity
+
+HOLD_SIGNAL_REASON = "관망 신호: 명확한 매매 조건이 확인되지 않았습니다."
 
 
 @dataclass
@@ -166,6 +168,12 @@ class AutoTrader:
                 last_skip_reason=self._state.last_skip_reason,
                 recommendation_markets=list(self._state.recommendation_markets),
             )
+            if (
+                snapshot.last_skip_reason is None
+                and snapshot.last_plan is not None
+                and snapshot.last_plan.side == "flat"
+            ):
+                snapshot.last_skip_reason = HOLD_SIGNAL_REASON
         return snapshot
 
     # ------------------------------------------------------------------
@@ -255,6 +263,7 @@ class AutoTrader:
             selected_last_close = 0.0
             selected_market = market_code
             last_candidate_error: Optional[Exception] = None
+            integrity_failures: List[str] = []
 
             for index, candidate in enumerate(candidate_markets):
                 try:
@@ -266,6 +275,14 @@ class AutoTrader:
                     candles = market_data.candles
                     if not candles:
                         raise MarketDataError("캔들 데이터가 비어 있습니다.")
+
+                    integrity_score, integrity_flags = evaluate_candles_integrity(candles)
+                    if integrity_score < 60.0:
+                        summary = ", ".join(integrity_flags) if integrity_flags else "상세 사유 없음"
+                        message = f"{candidate} 데이터 무결성 부족 ({integrity_score:.0f}점: {summary})"
+                        integrity_failures.append(message)
+                        self._append_log("warning", message)
+                        continue
 
                     last_close = candles[-1].close
                     insight = self._analyse_market(
@@ -317,6 +334,14 @@ class AutoTrader:
                 break
 
             if selected_plan is None:
+                if integrity_failures:
+                    summary = integrity_failures[0]
+                    if len(integrity_failures) > 1:
+                        summary = f"{summary} 외 {len(integrity_failures) - 1}개 후보"
+                    reason = f"데이터 무결성 부족으로 관망합니다. {summary}"
+                    self._set_skip_reason(reason)
+                    raise MarketDataError(reason)
+
                 if last_candidate_error is not None:
                     raise last_candidate_error
                 raise MarketDataError("실행 가능한 추천을 찾지 못했습니다.")
@@ -448,7 +473,7 @@ class AutoTrader:
         last_close: float,
     ) -> Optional[AutoTraderExecution]:
         if plan.side == "flat":
-            self._set_skip_reason("관망 신호: 명확한 매매 조건이 확인되지 않았습니다.")
+            self._set_skip_reason(HOLD_SIGNAL_REASON)
             return None
         if plan.confidence_pct < config.min_confidence_pct:
             self._append_log("info", "신뢰도가 낮아 주문을 건너뜁니다.")
