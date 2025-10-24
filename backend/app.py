@@ -13,6 +13,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import ai, notifications, trading
+
+# Ensure environment variables from .env are loaded before other modules
+# (such as market data fetchers) evaluate their configuration.
+notifications.ensure_env_from_file()
 from .autopilot import AutoTrader, AutoTraderConfig, AutoTraderExecution, AutoTraderState
 from .schemas import (
     CandlePayload,

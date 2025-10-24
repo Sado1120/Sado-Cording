@@ -115,10 +115,15 @@ def test_docker_compose_layout_is_complete():
     assert backend_build.get("context") == ".", "backend.build.context 는 '.' 이어야 합니다."
     assert backend_build.get("dockerfile") == "backend/Dockerfile", "backend Dockerfile 경로가 잘못되었습니다."
 
+    env_file = backend.get("env_file")
+    assert env_file in (".env", [".env"]), "backend.env_file 에 .env 파일을 지정해야 합니다."
+
     backend_ports = backend.get("ports")
     assert backend_ports and "8000:8000" in backend_ports, "backend 포트 매핑 8000:8000 이 필요합니다."
     backend_env = _normalise_env(backend.get("environment", []))
     assert backend_env.get("PYTHONUNBUFFERED") == "1", "backend 환경 변수 PYTHONUNBUFFERED=1 이 필요합니다."
+    backend_volumes = backend.get("volumes", [])
+    assert "./.env:/app/.env:ro" in backend_volumes, "backend 컨테이너에 .env 볼륨을 마운트해야 합니다."
     assert backend.get("restart") == "unless-stopped", "backend.restart 정책은 unless-stopped 여야 합니다."
 
     frontend = services.get("frontend")

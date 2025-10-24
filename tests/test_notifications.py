@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -155,5 +156,34 @@ def test_resolve_webhook_url_reads_env_file(tmp_path, monkeypatch):
 
     resolved = notifications._resolve_webhook_url()  # type: ignore[attr-defined]
     assert resolved == "https://example.com/from-env"
+
+    notifications._reset_env_cache()  # type: ignore[attr-defined]
+
+
+def test_ensure_env_from_file_populates_missing_keys(tmp_path, monkeypatch):
+    reset_chat_state()
+    monkeypatch.delenv("SADO_CHAT_WEBHOOK", raising=False)
+    monkeypatch.delenv("UPBIT_BASE_URL", raising=False)
+
+    env_file = tmp_path / "bot.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "SADO_CHAT_WEBHOOK=https://example.com/from-env",
+                "UPBIT_BASE_URL=https://proxy.upbit.local/api/",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("SADO_ENV_FILE", str(env_file))
+    notifications._reset_env_cache()  # type: ignore[attr-defined]
+
+    loaded = notifications.ensure_env_from_file()
+
+    assert loaded["SADO_CHAT_WEBHOOK"] == "https://example.com/from-env"
+    assert os.getenv("SADO_CHAT_WEBHOOK") == "https://example.com/from-env"
+    assert os.getenv("UPBIT_BASE_URL") == "https://proxy.upbit.local/api/"
 
     notifications._reset_env_cache()  # type: ignore[attr-defined]

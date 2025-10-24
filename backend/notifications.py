@@ -123,6 +123,20 @@ def _resolve_webhook_url(override: Optional[str] = None) -> str:
     return ""
 
 
+def ensure_env_from_file(*, override: bool = False) -> Dict[str, str]:
+    """Load ``.env`` variables into ``os.environ`` if they are missing."""
+
+    cached = _load_env_file_cache()
+    for key, value in cached.items():
+        if not value:
+            continue
+        if override:
+            os.environ[key] = value
+        else:
+            os.environ.setdefault(key, value)
+    return dict(cached)
+
+
 def _record_attempt(*, success: bool, message: str, error: Optional[str]) -> None:
     global _last_attempt_at, _last_success_at, _last_error, _last_message
 

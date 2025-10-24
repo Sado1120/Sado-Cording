@@ -88,7 +88,14 @@ _INTERVAL_PATHS: Dict[Interval, Tuple[str, Optional[str]]] = {
     "month": ("months", None),
 }
 
-_UPBIT_API_BASE = "https://api.upbit.com"
+def _normalise_upbit_base_url(raw: str) -> str:
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return "https://api.upbit.com"
+    return cleaned.rstrip("/") or "https://api.upbit.com"
+
+
+_UPBIT_API_BASE = _normalise_upbit_base_url(os.getenv("UPBIT_BASE_URL", "https://api.upbit.com"))
 _UPBIT_USER_AGENT = "SadoTradeBot/1.0 (+https://github.com/iljin-corp/sado-trade-bot)"
 _UPBIT_HEADERS = {"Accept": "application/json", "User-Agent": _UPBIT_USER_AGENT}
 

@@ -6,10 +6,14 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: iljin-backend
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
     ports:
       - "8000:8000"
+    volumes:
+      - ./.env:/app/.env:ro
     restart: unless-stopped
 
   frontend:

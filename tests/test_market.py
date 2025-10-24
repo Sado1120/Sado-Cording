@@ -56,6 +56,17 @@ def test_fetch_upbit_candles_offline_mode(monkeypatch):
     importlib.reload(__import__("backend.market", fromlist=["*"]))
 
 
+def test_upbit_base_url_normalises_trailing_slash(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("UPBIT_BASE_URL", "https://proxy.example.com/api/")
+    module = importlib.reload(__import__("backend.market", fromlist=["*"]))
+    assert module._UPBIT_API_BASE == "https://proxy.example.com/api"  # type: ignore[attr-defined]
+
+    monkeypatch.delenv("UPBIT_BASE_URL", raising=False)
+    importlib.reload(__import__("backend.market", fromlist=["*"]))
+
+
 def test_build_market_insights_from_synthetic():
     candles = generate_synthetic_prices(days=60, seed=123)
     insights = build_market_insights(candles, market="KRW-BTC", interval="minute1")
