@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -10,7 +11,7 @@ from fastapi import HTTPException
 from backend import notifications
 import backend.app as app_module
 from backend.app import post_chat_notification
-from backend.schemas import ChatNotificationRequest
+from backend.schemas import ChatDigestFlushRequest, ChatDigestFlushResponse, ChatDigestReport, ChatNotificationRequest
 
 
 def reset_chat_state():
@@ -19,6 +20,7 @@ def reset_chat_state():
     notifications._last_error = None  # type: ignore[attr-defined]
     notifications._last_message = None  # type: ignore[attr-defined]
     notifications._change_digests.clear()  # type: ignore[attr-defined]
+    notifications.reset_digest_state()
 
 
 def test_notify_synology_chat_with_stub_client(monkeypatch):
@@ -208,3 +210,61 @@ def test_ensure_env_from_file_populates_missing_keys(tmp_path, monkeypatch):
     assert os.getenv("UPBIT_BASE_URL") == "https://proxy.upbit.local/api/"
 
     notifications._reset_env_cache()  # type: ignore[attr-defined]
+
+
+def test_digest_enqueue_and_flush(monkeypatch):
+    reset_chat_state()
+    captured: list[str] = []
+
+    def fake_notifier(message: str) -> bool:
+        captured.append(message)
+        return True
+
+    base_time = datetime(2024, 1, 5, 12, tzinfo=timezone.utc)
+    notifications.enqueue_digest(
+        "recommendations",
+        "12:00 · minute60\n1. KRW-BTC · 롱",
+        timestamp=base_time,
+    )
+
+    reports = notifications.flush_due_digests(
+        now=base_time.replace(day=6),
+        notifier=fake_notifier,
+    )
+
+    assert len(reports) == 1
+    assert "KRW-BTC" in captured[0]
+    assert reports[0]["sent"] is True
+
+
+def test_digest_flush_endpoint(monkeypatch):
+    reset_chat_state()
+
+    dispatched: list[dict] = []
+
+    def fake_flush(**kwargs):  # noqa: D401
+        dispatched.append(kwargs)
+        return [
+            {
+                "category": "recommendations",
+                "date": "2024-01-05",
+                "message": "[일일 리포트] AI 추천 리포트",
+                "sent": True,
+            }
+        ]
+
+    monkeypatch.setattr(app_module.notifications, "flush_due_digests", fake_flush)
+
+    response = app_module.flush_chat_digest(ChatDigestFlushRequest(category="recommendations", force=True))
+    assert isinstance(response, ChatDigestFlushResponse)
+    assert response.reports == [
+        ChatDigestReport(
+            category="recommendations",
+            date=datetime(2024, 1, 5, tzinfo=timezone.utc).date(),
+            sent=True,
+            message_preview="[일일 리포트] AI 추천 리포트",
+        )
+    ]
+
+    assert dispatched[0]["category"] == "recommendations"
+    assert dispatched[0]["force"] is True

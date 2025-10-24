@@ -14,7 +14,7 @@ from .market import (
     fetch_authoritative_news,
     fetch_upbit_candles,
 )
-from .notifications import notify_synology_chat
+from .notifications import enqueue_digest, flush_due_digests, notify_synology_chat
 from .schemas import MarketRecommendationsResponse, OrderMode
 from .trading import Candle, evaluate_candles_integrity
 
@@ -413,6 +413,8 @@ class AutoTrader:
                     self._state.last_skip_reason or "내부 오류가 발생해 관망 상태를 유지합니다."
                 )
             self._append_log("error", friendly_error)
+        finally:
+            flush_due_digests(now=self._time_provider(), notifier=self._notifier)
 
     def _safe_news(self) -> List[dict]:
         try:
@@ -510,7 +512,9 @@ class AutoTrader:
 
         if plan.side == "bid":
             available_cash = snapshot.cash
-            order_value = min(available_cash, target_value)
+            fee_rate = getattr(self._broker, "fee_rate", 0.0) or 0.0
+            max_affordable = available_cash / (1.0 + max(fee_rate, 0.0))
+            order_value = min(max_affordable, target_value)
             if order_value < last_close * 0.0001:
                 self._append_log("info", "현금이 부족해 매수를 생략합니다.")
                 self._set_skip_reason(
@@ -680,6 +684,19 @@ class AutoTrader:
             self._state.last_recommendations = formatted[:5]
             self._state.last_recommendation_source = source
             self._state.recommendation_markets = candidate_markets[:10]
+
+        if formatted:
+            timestamp = self._time_provider()
+            header_parts = [timestamp.strftime("%H:%M"), config.recommendation_interval or config.interval]
+            if source:
+                header_parts.append(str(source))
+            header = " · ".join(part for part in header_parts if part)
+            digest_lines = [f"{index + 1}. {line}" for index, line in enumerate(formatted[:5])]
+            enqueue_digest(
+                "recommendations",
+                "\n".join([header, *digest_lines]),
+                timestamp=timestamp,
+            )
 
         return market_code, candidate_markets
 

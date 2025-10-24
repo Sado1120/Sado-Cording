@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Dict, List, Literal, Optional
 
@@ -739,3 +739,22 @@ class ChatNotificationStatus(BaseModel):
     last_error: Optional[str]
     last_message: Optional[str]
     webhook_host: Optional[str]
+
+
+class ChatDigestFlushRequest(BaseModel):
+    category: Optional[str] = Field(None, description="요약을 전송할 카테고리 (기본: 전체)")
+    force: bool = Field(
+        False,
+        description="True일 경우 당일 데이터까지 즉시 보고서를 전송합니다.",
+    )
+
+
+class ChatDigestReport(BaseModel):
+    category: str
+    date: date
+    sent: bool
+    message_preview: str
+
+
+class ChatDigestFlushResponse(BaseModel):
+    reports: List[ChatDigestReport]

@@ -4,9 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 try:  # pragma: no cover - optional dependency during import
@@ -21,6 +22,14 @@ _last_error: Optional[str] = None
 _last_message: Optional[str] = None
 _change_digests: Dict[str, str] = {}
 _env_cache: Optional[Dict[str, str]] = None
+
+_DIGEST_CATEGORY_LABELS = {
+    "recommendations": "AI 추천 리포트",
+    "insights": "시장 인사이트",
+}
+
+_digest_messages: Dict[str, Dict[str, List[str]]] = defaultdict(dict)
+_digest_hashes: Dict[str, Dict[str, set[str]]] = defaultdict(dict)
 
 
 def _clean_webhook_url(raw: Optional[str]) -> str:
@@ -103,6 +112,13 @@ def _reset_env_cache() -> None:
     _env_cache = None
 
 
+def reset_digest_state() -> None:
+    """Clear accumulated digest buffers (used primarily in tests)."""
+
+    _digest_messages.clear()
+    _digest_hashes.clear()
+
+
 def _resolve_webhook_url(override: Optional[str] = None) -> str:
     candidates = (
         override,
@@ -148,6 +164,97 @@ def _record_attempt(*, success: bool, message: str, error: Optional[str]) -> Non
         _last_error = None
     else:
         _last_error = error
+
+
+def enqueue_digest(
+    category: str,
+    message: str,
+    *,
+    timestamp: Optional[datetime] = None,
+) -> bool:
+    """Store ``message`` for inclusion in a later daily digest."""
+
+    if not message:
+        return False
+
+    category_key = (category or "general").strip() or "general"
+    when = timestamp or datetime.now(timezone.utc)
+    date_key = when.date().isoformat()
+    digest = hashlib.sha256(message.encode("utf-8", "ignore")).hexdigest()
+
+    seen = _digest_hashes.setdefault(category_key, {}).setdefault(date_key, set())
+    if digest in seen:
+        return False
+
+    bucket = _digest_messages.setdefault(category_key, {}).setdefault(date_key, [])
+    bucket.append(message)
+    seen.add(digest)
+    return True
+
+
+def _format_digest_message(category: str, date_key: str, messages: List[str]) -> str:
+    label = _DIGEST_CATEGORY_LABELS.get(category, category.title())
+    header = f"[일일 리포트] {label} · {date_key}"
+    body_lines = [f"- {line}" for line in messages]
+    return "\n".join([header, *body_lines])
+
+
+def flush_due_digests(
+    *,
+    now: Optional[datetime] = None,
+    notifier: Optional[Any] = None,
+    category: Optional[str] = None,
+    force: bool = False,
+) -> List[Dict[str, Any]]:
+    """Flush digest messages that are ready to be delivered.
+
+    Returns a list of dispatch records containing the category, date, preview
+    text, and whether delivery succeeded. When ``force`` is ``False`` only
+    digests from 이전 날짜 are sent so 하루에 한 번만 전달된다.
+    """
+
+    if notifier is None:
+        notifier = notify_synology_chat
+
+    if notifier is None:
+        return []
+
+    now = now or datetime.now(timezone.utc)
+    current_date = now.date()
+    categories = [category] if category else list(_digest_messages.keys())
+    dispatches: List[Dict[str, Any]] = []
+
+    for category_key in categories:
+        per_day = _digest_messages.get(category_key)
+        if not per_day:
+            continue
+        day_keys = sorted(per_day.keys())
+        for date_key in day_keys:
+            if not per_day.get(date_key):
+                continue
+            try:
+                day = datetime.strptime(date_key, "%Y-%m-%d").date()
+            except ValueError:
+                day = current_date
+            if not force and day >= current_date:
+                continue
+            message = _format_digest_message(category_key, date_key, per_day[date_key])
+            success = bool(notifier(message))
+            dispatches.append(
+                {
+                    "category": category_key,
+                    "date": date_key,
+                    "message": message,
+                    "sent": success,
+                }
+            )
+            if success:
+                per_day.pop(date_key, None)
+                _digest_hashes.get(category_key, {}).pop(date_key, None)
+        if not per_day:
+            _digest_messages.pop(category_key, None)
+            _digest_hashes.pop(category_key, None)
+    return dispatches
 
 
 def notify_synology_chat(

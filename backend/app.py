@@ -66,6 +66,9 @@ from .schemas import (
     DiagnosticCheckPayload,
     ChatNotificationRequest,
     ChatNotificationStatus,
+    ChatDigestFlushRequest,
+    ChatDigestFlushResponse,
+    ChatDigestReport,
     MarketGroupPayload,
     MarketRecommendationsResponse,
     MarketRecommendationPayload,
@@ -707,6 +710,33 @@ def post_chat_notification(payload: ChatNotificationRequest) -> dict:
 def get_chat_notification_status() -> ChatNotificationStatus:
     status = notifications.get_synology_chat_status()
     return ChatNotificationStatus(**status)
+
+
+@app.post("/notifications/chat/digest/flush", response_model=ChatDigestFlushResponse)
+def flush_chat_digest(payload: ChatDigestFlushRequest) -> ChatDigestFlushResponse:
+    reports = notifications.flush_due_digests(
+        now=_utcnow(),
+        category=payload.category,
+        force=payload.force,
+    )
+    response_items: List[ChatDigestReport] = []
+    for report in reports:
+        raw_date = report.get("date", "")
+        try:
+            parsed_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = _utcnow().date()
+        message = str(report.get("message", ""))
+        preview = message.split("\n", 1)[0] if message else ""
+        response_items.append(
+            ChatDigestReport(
+                category=str(report.get("category", "general")),
+                date=parsed_date,
+                sent=bool(report.get("sent", False)),
+                message_preview=preview,
+            )
+        )
+    return ChatDigestFlushResponse(reports=response_items)
 
 
 @app.get("/health")
