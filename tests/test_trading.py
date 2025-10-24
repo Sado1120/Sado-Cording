@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 
 import pytest
@@ -209,7 +209,7 @@ def test_run_ema_strategy_honors_take_profit_and_trailing():
 def test_run_ema_strategy_raises_when_fast_not_slower():
     candles = [
         trading.Candle(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             open=1,
             high=1,
             low=1,

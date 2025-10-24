@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -75,7 +75,7 @@ def test_paper_endpoints_support_reset_mark_and_order():
     status_response = get_paper_status()
     assert status_response.portfolio_value > 0
     assert status_response.last_updated >= mark_response.last_updated
-    assert status_response.last_updated <= datetime.utcnow()
+    assert status_response.last_updated <= datetime.now(timezone.utc)
     assert status_response.price_source in {"manual", "synthetic", "upbit"}
     assert status_response.market == "KRW-BTC"
     assert status_response.interval == "minute1"
@@ -90,7 +90,7 @@ def test_get_paper_status_refreshes_market(monkeypatch):
         def __init__(self, price: float):
             self.candles = [
                 trading.Candle(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     open=price,
                     high=price,
                     low=price,
@@ -115,7 +115,7 @@ def test_get_paper_status_refreshes_market(monkeypatch):
     assert captured["market"] == "KRW-ETH"
     assert captured["interval"] == "minute15"
     assert second.last_updated >= first.last_updated
-    assert second.last_updated <= datetime.utcnow()
+    assert second.last_updated <= datetime.now(timezone.utc)
     assert first.price_source == "upbit"
     assert second.price_source == "upbit"
     assert first.market == "KRW-ETH"
@@ -128,14 +128,14 @@ def test_get_paper_status_refreshes_market(monkeypatch):
 
 def test_get_paper_status_auto_refreshes_stale_snapshot(monkeypatch):
     broker = reset_global_broker()
-    broker.last_update = datetime.utcnow() - timedelta(hours=8)
+    broker.last_update = datetime.now(timezone.utc) - timedelta(hours=8)
     broker.last_prices.clear()
 
     class DummyData:
         def __init__(self, price: float):
             self.candles = [
                 trading.Candle(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     open=price,
                     high=price,
                     low=price,
@@ -157,7 +157,7 @@ def test_get_paper_status_auto_refreshes_stale_snapshot(monkeypatch):
 
     assert calls["count"] >= 1
     assert status.price_source == "upbit"
-    assert status.last_updated >= datetime.utcnow() - timedelta(minutes=1)
+    assert status.last_updated >= datetime.now(timezone.utc) - timedelta(minutes=1)
     assert status.heartbeat_state in {"online", "warning"}
     assert status.heartbeat_reason in {"live", "delayed"}
 
@@ -166,7 +166,7 @@ def test_get_trade_history_combines_paper_and_autopilot(monkeypatch):
     broker = reset_global_broker(initial_cash=5_000_000)
     broker.submit_order(market="KRW-BTC", side="bid", price=25_000_000, volume=0.1)
 
-    executed_at = datetime.utcnow()
+    executed_at = datetime.now(timezone.utc)
     fake_execution = AutoTraderExecution(
         mode=OrderMode.PAPER,
         market="KRW-ETH",
@@ -230,7 +230,7 @@ def test_submit_market_order_without_price_triggers_refresh(monkeypatch):
         def __init__(self, price: float):
             self.candles = [
                 trading.Candle(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     open=price,
                     high=price,
                     low=price,

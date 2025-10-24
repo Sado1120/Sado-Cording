@@ -5,7 +5,7 @@ import math
 import os
 import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Iterable, List, Optional, Tuple
 
@@ -108,6 +108,22 @@ _paper_broker: PaperBroker = paper_broker()
 _auto_trader = AutoTrader(broker=_paper_broker)
 _paper_market_preference = "KRW-BTC"
 _paper_interval_preference = "minute1"
+
+
+def _utcnow() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+
+    return datetime.now(timezone.utc)
+
+
+def _ensure_utc(value: datetime | None) -> datetime:
+    """Normalise datetimes to timezone-aware UTC values."""
+
+    if value is None:
+        return _utcnow()
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _safe_number(
@@ -256,7 +272,7 @@ def _neutral_autopilot_plan(market: str, reason: str) -> ai.AutoPilotOrderPlan:
 
 def _paper_order_history(order: PaperOrder) -> TradeHistoryItemPayload:
     return TradeHistoryItemPayload(
-        executed_at=order.executed_at,
+        executed_at=_ensure_utc(order.executed_at),
         market=order.market,
         side=order.side,
         mode=OrderMode.PAPER,
@@ -272,7 +288,7 @@ def _paper_order_history(order: PaperOrder) -> TradeHistoryItemPayload:
 
 def _execution_history(execution: AutoTraderExecution) -> TradeHistoryItemPayload:
     return TradeHistoryItemPayload(
-        executed_at=execution.executed_at,
+        executed_at=_ensure_utc(execution.executed_at),
         market=execution.market,
         side=execution.side,
         mode=execution.mode,
@@ -607,7 +623,7 @@ def _serialize_order(order: PaperOrder) -> PaperOrderPayload:
         volume=order.volume,
         fee=order.fee,
         realized_pnl=order.realized_pnl,
-        executed_at=order.executed_at,
+        executed_at=_ensure_utc(order.executed_at),
     )
 
 
@@ -615,7 +631,7 @@ def _serialize_balance(snapshot) -> PaperBalancePayload:
     return PaperBalancePayload(
         cash=snapshot.cash,
         portfolio_value=snapshot.portfolio_value,
-        last_updated=snapshot.last_update,
+        last_updated=_ensure_utc(snapshot.last_update),
         positions=[_serialize_position(pos) for pos in snapshot.positions],
         orders=[_serialize_order(order) for order in snapshot.orders],
     )
@@ -843,7 +859,7 @@ def list_markets(only_krw: bool = True) -> MarketListResponse:
     ]
 
     return MarketListResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=_utcnow(),
         source=listing.source,
         markets=markets,
         groups=_build_market_groups(markets),
@@ -992,7 +1008,7 @@ def _empty_market_recommendations(
 
     safe_limit = max(1, min(limit, 10))
     return MarketRecommendationsResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=_utcnow(),
         interval=interval,
         base_currency=base,
         limit=safe_limit,
@@ -1083,7 +1099,7 @@ def _compute_market_recommendations(
     duration_ms = round(_safe_number(raw_duration, lower=0.0), 2)
 
     return MarketRecommendationsResponse(
-        generated_at=datetime.utcnow(),
+        generated_at=_utcnow(),
         interval=interval,
         base_currency=base_currency,
         limit=limit,
@@ -1287,7 +1303,7 @@ def get_news(limit: int = 8) -> NewsResponse:
         NewsItem(**entry)
         for entry in fetch_authoritative_news(limit=limit)
     ]
-    return NewsResponse(generated_at=datetime.utcnow(), items=items)
+    return NewsResponse(generated_at=_utcnow(), items=items)
 
 
 @app.get("/diagnostics/full", response_model=DiagnosticsResponse)
@@ -1324,7 +1340,7 @@ def _refresh_paper_market(market: str, *, interval: str = "minute1") -> str:
 def _paper_heartbeat(price_source: str, last_updated: datetime) -> tuple[str, str]:
     """Return dashboard-friendly heartbeat state and reason."""
 
-    now = datetime.utcnow()
+    now = _utcnow()
     delta_seconds = max(0.0, (now - last_updated).total_seconds())
 
     if price_source == "upbit":
@@ -1371,7 +1387,7 @@ def _paper_status_response(*, market: Optional[str] = None, interval: str = "min
             snapshot = _paper_broker.snapshot()
             balance = _serialize_balance(snapshot)
 
-        age_seconds = max(0.0, (datetime.utcnow() - balance.last_updated).total_seconds())
+        age_seconds = max(0.0, (_utcnow() - balance.last_updated).total_seconds())
         if age_seconds > 120:
             refreshed_source = _refresh_paper_market(market=target_market, interval=target_interval)
             if refreshed_source in {"upbit", "synthetic"}:
@@ -1506,7 +1522,7 @@ def _diagnostics_summary() -> DiagnosticsResponse:
     checks.append(_run_check("전략 엔진", _check_strategy))
     checks.append(_run_check("실거래 키", _check_keys))
 
-    return DiagnosticsResponse(generated_at=datetime.utcnow(), checks=checks)
+    return DiagnosticsResponse(generated_at=_utcnow(), checks=checks)
 
 
 @app.post("/ai/portfolio/optimize", response_model=PortfolioOptimizationResponse)
@@ -1613,7 +1629,7 @@ def run_ai_copilot(payload: CopilotRequest) -> CopilotResponse:
             mode=payload.mode.value,
         )
     except Exception as exc:
-        generated_at = datetime.utcnow()
+        generated_at = _utcnow()
         answer = (
             "AI 코파일럿 기본 보고서를 생성했지만 상세 해설 중 오류가 발생했습니다. "
             f"오류 상세: {exc}"
@@ -1729,7 +1745,7 @@ def run_ai_assistant(payload: AssistantRequest) -> AssistantResponse:
             next_steps=["잠시 후 다시 요청해주세요."],
             risk_notices=["내부 오류로 관망 상태를 유지합니다."],
             autopilot=autopilot_plan,
-            generated_at=datetime.utcnow(),
+            generated_at=_utcnow(),
         )
 
     insight_payload = MarketAIResponse(
@@ -1782,7 +1798,7 @@ def submit_order(payload: OrderRequest) -> OrderResponse:
         needs_price_refresh = payload.price is None or payload.price <= 0
         if needs_price_refresh:
             last_price = _paper_broker.get_last_price(market_code)
-            age_seconds = max(0.0, (datetime.utcnow() - _paper_broker.last_update).total_seconds())
+            age_seconds = max(0.0, (_utcnow() - _ensure_utc(_paper_broker.last_update)).total_seconds())
             if last_price is None or age_seconds > 90.0:
                 try:
                     _refresh_paper_market(
@@ -1911,7 +1927,7 @@ def get_trade_history(limit: int = 50) -> TradeHistoryResponse:
     if len(combined) > limit:
         combined = combined[:limit]
 
-    return TradeHistoryResponse(generated_at=datetime.utcnow(), items=combined)
+    return TradeHistoryResponse(generated_at=_utcnow(), items=combined)
 
 
 @app.get("/trading/live/balances", response_model=LiveBalancesResponse)
