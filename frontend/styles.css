@@ -2014,6 +2014,11 @@ body {
   font-size: 0.85rem;
 }
 
+.metric-disabled {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .error {
   color: #ff6b6b;
   font-size: 0.9rem;

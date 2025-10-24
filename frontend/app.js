@@ -465,8 +465,28 @@ const PAPER_SOURCE_LABELS = {
 
 const PRICE_SOURCE_LABELS = {
   upbit: "업비트 실시간 시세",
-  synthetic: "시뮬레이션 시세",
+  synthetic: "시뮬레이션 시세 (성과 지표 비활성)",
   manual: "사용자 제공 시세",
+};
+
+const FACTUAL_SOURCES = new Set(["upbit", "manual"]);
+
+const isFactualReport = (report) => {
+  if (!report) return false;
+  const source = (report.price_source || "manual").toLowerCase();
+  return FACTUAL_SOURCES.has(source);
+};
+
+const disableMetric = (element, text) => {
+  if (!element) return;
+  element.textContent = text;
+  element.classList.add("metric-disabled");
+};
+
+const enableMetric = (element, text) => {
+  if (!element) return;
+  element.textContent = text;
+  element.classList.remove("metric-disabled");
 };
 
 let cachedMarkets = [...FALLBACK_MARKETS];
@@ -3066,6 +3086,13 @@ const updateAutopilotRiskLabel = (value) => {
 const updateAlphaBriefing = (report, context = {}) => {
   if (!alphaBriefingEl) return;
 
+  if (!isFactualReport(report)) {
+    alphaBriefingEl.textContent = "실시간 시세 없음 - 브리핑 비활성화";
+    alphaBriefingEl.classList.add("metric-disabled");
+    return;
+  }
+
+  alphaBriefingEl.classList.remove("metric-disabled");
   const payoff = formatRatio(report.trade_summary.payoff_ratio || report.win_loss_ratio);
   const lines = [];
   if (context.market) {
@@ -3099,28 +3126,34 @@ function updateCapitalSummary(report) {
   const initial = Number(report.initial_capital ?? 0);
   const ending = Number(report.ending_equity ?? initial);
   const profit = Number(report.profit_krw ?? ending - initial);
+  const factual = isFactualReport(report);
 
   if (initialCapitalEl) {
-    initialCapitalEl.textContent = formatCurrencyWithSymbol(initial);
+    enableMetric(initialCapitalEl, formatCurrencyWithSymbol(initial));
   }
   if (endingEquityEl) {
-    endingEquityEl.textContent = formatCurrencyWithSymbol(ending);
+    enableMetric(endingEquityEl, formatCurrencyWithSymbol(ending));
   }
   if (profitKrwEl) {
-    const sign = profit > 0 ? "+" : profit < 0 ? "-" : "";
-    const profitLabel = `${sign}${formatCurrencyWithSymbol(Math.abs(profit))} (${formatPercent(
-      report.total_return_pct ?? 0,
-    )})`;
-    profitKrwEl.textContent = profitLabel;
-    profitKrwEl.classList.toggle("profit-positive", profit >= 0);
-    profitKrwEl.classList.toggle("profit-negative", profit < 0);
+    profitKrwEl.classList.remove("profit-positive", "profit-negative", "metric-disabled");
+    if (!factual) {
+      disableMetric(profitKrwEl, "실시간 시세 없음 - 수익률 표시 불가");
+    } else {
+      const sign = profit > 0 ? "+" : profit < 0 ? "-" : "";
+      const profitLabel = `${sign}${formatCurrencyWithSymbol(Math.abs(profit))} (${formatPercent(
+        report.total_return_pct ?? 0,
+      )})`;
+      profitKrwEl.textContent = profitLabel;
+      profitKrwEl.classList.toggle("profit-positive", profit >= 0);
+      profitKrwEl.classList.toggle("profit-negative", profit < 0);
+    }
   }
   if (marketNoteEl) {
     if (report.market) {
-      marketNoteEl.textContent = `전략 마켓: ${report.market}`;
+      enableMetric(marketNoteEl, `전략 마켓: ${report.market}`);
       marketNoteEl.classList.remove("muted");
     } else {
-      marketNoteEl.textContent = "전략 마켓: -";
+      disableMetric(marketNoteEl, "전략 마켓: -");
       marketNoteEl.classList.add("muted");
     }
   }
@@ -3137,51 +3170,96 @@ function updateCapitalSummary(report) {
 
 function updateMetrics(report) {
   updateCapitalSummary(report);
-  totalReturnEl.textContent = formatPercent(report.total_return_pct);
-  annualReturnEl.textContent = formatPercent(report.annualized_return_pct);
-  drawdownEl.textContent = formatPercent(report.max_drawdown_pct);
-  tradeCountEl.textContent = `${report.trade_summary.count}건`;
-  tradeWinrateEl.textContent = `승률 ${ratioFormatter.format(report.trade_summary.win_rate)}%`;
-  tradeAvgEl.textContent = `평균 ${ratioFormatter.format(report.trade_summary.avg_return_pct)}%`;
-  tradeExpectancyEl.textContent = `기대 ${ratioFormatter.format(report.trade_summary.expectancy_pct)}%`;
-  tradeMedianEl.textContent = `중앙값 ${ratioFormatter.format(report.trade_summary.median_return_pct)}%`;
-  tradeWinLossEl.textContent = `승패비 ${formatRatio(report.trade_summary.win_loss_ratio)}`;
-  if (tradePayoffEl) {
-    tradePayoffEl.textContent = `페이오프 ${formatRatio(report.trade_summary.payoff_ratio)}`;
+  const factual = isFactualReport(report);
+  if (!factual) {
+    disableMetric(totalReturnEl, "실시간 시세 없음");
+    disableMetric(annualReturnEl, "-");
+    disableMetric(drawdownEl, "-");
+    disableMetric(tradeCountEl, "-");
+    disableMetric(tradeWinrateEl, "-");
+    disableMetric(tradeAvgEl, "-");
+    disableMetric(tradeExpectancyEl, "-");
+    disableMetric(tradeMedianEl, "-");
+    disableMetric(tradeWinLossEl, "-");
+    if (tradePayoffEl) disableMetric(tradePayoffEl, "-");
+    disableMetric(tradeBestEl, "-");
+    disableMetric(tradeWorstEl, "-");
+    disableMetric(volatilityEl, "-");
+    disableMetric(sharpeEl, "-");
+    disableMetric(sortinoEl, "-");
+    disableMetric(calmarEl, "-");
+    disableMetric(varEl, "-");
+    disableMetric(exposureEl, "-");
+    disableMetric(profitFactorEl, "-");
+    disableMetric(expectancyEl, "-");
+    disableMetric(holdEl, "-");
+    disableMetric(ulcerEl, "-");
+    disableMetric(downsideEl, "-");
+    disableMetric(recoveryEl, "-");
+    disableMetric(avgWinEl, "-");
+    disableMetric(avgLossEl, "-");
+    disableMetric(winLossEl, "-");
+    disableMetric(tailEl, "-");
+    disableMetric(omegaEl, "-");
+    disableMetric(kellyEl, "-");
+    disableMetric(streakWinEl, "-");
+    disableMetric(streakLossEl, "-");
+    disableMetric(skewnessEl, "-");
+    disableMetric(kurtosisEl, "-");
+    disableMetric(avgDrawdownEl, "-");
+    disableMetric(painEl, "-");
+    disableMetric(runupEl, "-");
+    disableMetric(mcMedianEl, "-");
+    disableMetric(mcP05El, "-");
+    disableMetric(mcP95El, "-");
+    disableMetric(mcAvgEl, "-");
+    updateAlphaBriefing(report, lastSimulationContext);
+    return;
   }
-  tradeBestEl.textContent = `최대수익 ${ratioFormatter.format(report.trade_summary.largest_win_pct)}%`;
-  tradeWorstEl.textContent = `최대손실 ${ratioFormatter.format(report.trade_summary.largest_loss_pct)}%`;
 
-  volatilityEl.textContent = formatPercent(report.volatility_pct);
-  sharpeEl.textContent = ratioFormatter.format(report.sharpe_ratio);
-  sortinoEl.textContent = ratioFormatter.format(report.sortino_ratio);
-  calmarEl.textContent = ratioFormatter.format(report.calmar_ratio);
-  varEl.textContent = formatPercent(report.value_at_risk_pct);
-  exposureEl.textContent = formatPercent(report.exposure_time_pct);
-  profitFactorEl.textContent = ratioFormatter.format(report.profit_factor);
-  expectancyEl.textContent = formatPercent(report.expectancy_pct);
-  holdEl.textContent = `${ratioFormatter.format(report.avg_trade_duration_bars)}봉`;
-  ulcerEl.textContent = ratioFormatter.format(report.ulcer_index);
-  downsideEl.textContent = formatPercent(report.downside_deviation_pct);
-  recoveryEl.textContent = formatRatio(report.recovery_factor);
-  avgWinEl.textContent = formatPercent(report.average_win_pct);
-  avgLossEl.textContent = formatPercent(report.average_loss_pct);
-  winLossEl.textContent = formatRatio(report.win_loss_ratio);
-  tailEl.textContent = formatRatio(report.tail_ratio);
-  omegaEl.textContent = formatRatio(report.omega_ratio);
-  kellyEl.textContent = formatPercent(report.kelly_fraction_pct);
-  streakWinEl.textContent = `${report.max_consecutive_wins}회`;
-  streakLossEl.textContent = `${report.max_consecutive_losses}회`;
-  skewnessEl.textContent = ratioFormatter.format(report.skewness);
-  kurtosisEl.textContent = ratioFormatter.format(report.kurtosis);
-  avgDrawdownEl.textContent = formatPercent(report.average_drawdown_pct);
-  painEl.textContent = formatPercent(report.pain_index);
-  runupEl.textContent = formatPercent(report.max_runup_pct);
+  enableMetric(totalReturnEl, formatPercent(report.total_return_pct));
+  enableMetric(annualReturnEl, formatPercent(report.annualized_return_pct));
+  enableMetric(drawdownEl, formatPercent(report.max_drawdown_pct));
+  enableMetric(tradeCountEl, `${report.trade_summary.count}건`);
+  enableMetric(tradeWinrateEl, `승률 ${ratioFormatter.format(report.trade_summary.win_rate)}%`);
+  enableMetric(tradeAvgEl, `평균 ${ratioFormatter.format(report.trade_summary.avg_return_pct)}%`);
+  enableMetric(tradeExpectancyEl, `기대 ${ratioFormatter.format(report.trade_summary.expectancy_pct)}%`);
+  enableMetric(tradeMedianEl, `중앙값 ${ratioFormatter.format(report.trade_summary.median_return_pct)}%`);
+  enableMetric(tradeWinLossEl, `승패비 ${formatRatio(report.trade_summary.win_loss_ratio)}`);
+  if (tradePayoffEl) enableMetric(tradePayoffEl, `페이오프 ${formatRatio(report.trade_summary.payoff_ratio)}`);
+  enableMetric(tradeBestEl, `최대수익 ${ratioFormatter.format(report.trade_summary.largest_win_pct)}%`);
+  enableMetric(tradeWorstEl, `최대손실 ${ratioFormatter.format(report.trade_summary.largest_loss_pct)}%`);
 
-  mcMedianEl.textContent = formatPercent(report.monte_carlo_summary.median_return_pct);
-  mcP05El.textContent = formatPercent(report.monte_carlo_summary.p05_return_pct);
-  mcP95El.textContent = formatPercent(report.monte_carlo_summary.p95_return_pct);
-  mcAvgEl.textContent = formatPercent(report.monte_carlo_summary.average_return_pct);
+  enableMetric(volatilityEl, formatPercent(report.volatility_pct));
+  enableMetric(sharpeEl, ratioFormatter.format(report.sharpe_ratio));
+  enableMetric(sortinoEl, ratioFormatter.format(report.sortino_ratio));
+  enableMetric(calmarEl, ratioFormatter.format(report.calmar_ratio));
+  enableMetric(varEl, formatPercent(report.value_at_risk_pct));
+  enableMetric(exposureEl, formatPercent(report.exposure_time_pct));
+  enableMetric(profitFactorEl, ratioFormatter.format(report.profit_factor));
+  enableMetric(expectancyEl, formatPercent(report.expectancy_pct));
+  enableMetric(holdEl, `${ratioFormatter.format(report.avg_trade_duration_bars)}봉`);
+  enableMetric(ulcerEl, ratioFormatter.format(report.ulcer_index));
+  enableMetric(downsideEl, formatPercent(report.downside_deviation_pct));
+  enableMetric(recoveryEl, formatRatio(report.recovery_factor));
+  enableMetric(avgWinEl, formatPercent(report.average_win_pct));
+  enableMetric(avgLossEl, formatPercent(report.average_loss_pct));
+  enableMetric(winLossEl, formatRatio(report.win_loss_ratio));
+  enableMetric(tailEl, formatRatio(report.tail_ratio));
+  enableMetric(omegaEl, formatRatio(report.omega_ratio));
+  enableMetric(kellyEl, formatPercent(report.kelly_fraction_pct));
+  enableMetric(streakWinEl, `${report.max_consecutive_wins}회`);
+  enableMetric(streakLossEl, `${report.max_consecutive_losses}회`);
+  enableMetric(skewnessEl, ratioFormatter.format(report.skewness));
+  enableMetric(kurtosisEl, ratioFormatter.format(report.kurtosis));
+  enableMetric(avgDrawdownEl, formatPercent(report.average_drawdown_pct));
+  enableMetric(painEl, formatPercent(report.pain_index));
+  enableMetric(runupEl, formatPercent(report.max_runup_pct));
+
+  enableMetric(mcMedianEl, formatPercent(report.monte_carlo_summary.median_return_pct));
+  enableMetric(mcP05El, formatPercent(report.monte_carlo_summary.p05_return_pct));
+  enableMetric(mcP95El, formatPercent(report.monte_carlo_summary.p95_return_pct));
+  enableMetric(mcAvgEl, formatPercent(report.monte_carlo_summary.average_return_pct));
 
   updateAlphaBriefing(report, lastSimulationContext);
 }

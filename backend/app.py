@@ -393,6 +393,16 @@ def _summarise_rebalance_for_chat(payload: RebalanceResponse) -> Optional[str]:
     return "[리밸런싱] " + ", ".join(top)
 
 
+def _summarise_simulation_for_chat(payload: SimulationResponse) -> Optional[str]:
+    source = payload.price_source
+    base = "[전략 시뮬레이션]"
+    if source != "upbit":
+        return f"{base} 실시간 시세 없음 - 합성 데이터 기반 결과"
+
+    headline = f"{base} {payload.market or '시장 미지정'} 총손익 {payload.profit_krw:,.0f} KRW"
+    return headline
+
+
 def _summarise_copilot_for_chat(payload: CopilotResponse) -> Optional[str]:
     plan = payload.autopilot
     highlight = (payload.summary_points[0] if payload.summary_points else payload.answer).strip()
@@ -751,7 +761,7 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
 
     trade_summary = trading.summarize_trades(report.trades)
 
-    return SimulationResponse(
+    response = SimulationResponse(
         market=report.market,
         initial_capital=report.initial_capital,
         ending_equity=report.ending_equity,
@@ -792,6 +802,16 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         price_message=price_message,
         price_detail=price_detail,
     )
+
+    if response.price_source != "upbit":
+        caution = "실시간 업비트 시세 부재로 합성 데이터를 사용했습니다. 수익률은 참고용입니다."
+        if response.price_message:
+            response.price_message = f"{response.price_message} {caution}"
+        else:
+            response.price_message = caution
+
+    _push_chat_summary("strategy-sim", _summarise_simulation_for_chat(response))
+    return response
 
 
 @app.get("/market/list", response_model=MarketListResponse)
