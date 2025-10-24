@@ -40,6 +40,7 @@ def test_paper_broker_cycle_handles_buy_sell_and_mark():
     position = status.positions[0]
     assert position.market_price == pytest.approx(1_100_000)
     assert position.unrealized_pnl == pytest.approx(50_000)
+    assert status.initial_cash == pytest.approx(1_000_000)
 
     sell_snapshot = broker.submit_order(
         market="KRW-BTC", side="ask", price=1_150_000, volume=0.5
@@ -71,6 +72,7 @@ def test_paper_endpoints_support_reset_mark_and_order():
     assert mark_response.price_source == "manual"
     assert mark_response.market == "KRW-BTC"
     assert mark_response.interval == "minute1"
+    assert mark_response.initial_cash == pytest.approx(5_000_000)
 
     status_response = get_paper_status()
     assert status_response.portfolio_value > 0
@@ -81,6 +83,7 @@ def test_paper_endpoints_support_reset_mark_and_order():
     assert status_response.interval == "minute1"
     assert status_response.heartbeat_state in {"online", "warning", "offline"}
     assert status_response.heartbeat_reason in {"live", "delayed", "manual", "synthetic", "stale"}
+    assert status_response.initial_cash == pytest.approx(5_000_000)
 
 
 def test_get_paper_status_refreshes_market(monkeypatch):
@@ -124,6 +127,8 @@ def test_get_paper_status_refreshes_market(monkeypatch):
     assert second.interval == "minute15"
     assert first.heartbeat_state in {"online", "warning", "offline"}
     assert second.heartbeat_state in {"online", "warning", "offline"}
+    assert first.initial_cash == pytest.approx(2_000_000)
+    assert second.initial_cash == pytest.approx(2_000_000)
 
 
 def test_get_paper_status_auto_refreshes_stale_snapshot(monkeypatch):
@@ -160,6 +165,7 @@ def test_get_paper_status_auto_refreshes_stale_snapshot(monkeypatch):
     assert status.last_updated >= datetime.now(timezone.utc) - timedelta(minutes=1)
     assert status.heartbeat_state in {"online", "warning"}
     assert status.heartbeat_reason in {"live", "delayed"}
+    assert status.initial_cash == pytest.approx(10_000_000)
 
 
 def test_get_trade_history_combines_paper_and_autopilot(monkeypatch):

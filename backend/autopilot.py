@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable, List, Optional, Tuple
 
@@ -151,9 +151,10 @@ class AutoTrader:
 
     def status(self) -> AutoTraderState:
         with self._lock:
+            config_snapshot = replace(self._state.config) if self._state.config is not None else None
             snapshot = AutoTraderState(
                 running=self._state.running,
-                config=self._state.config,
+                config=config_snapshot,
                 last_plan=self._state.last_plan,
                 last_insight=self._state.last_insight,
                 last_execution=self._state.last_execution,

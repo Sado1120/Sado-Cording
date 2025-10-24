@@ -471,6 +471,12 @@ body {
   gap: 1rem;
 }
 
+.topline-card__title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .topline-card__header h3 {
   font-size: 1.35rem;
 }
@@ -478,6 +484,11 @@ body {
 .topline-card__header .panel-subtitle {
   margin-left: auto;
   text-align: right;
+}
+
+.topline-card__title .panel-subtitle {
+  margin-left: 0;
+  text-align: left;
 }
 
 .topline-card--trades {

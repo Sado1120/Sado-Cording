@@ -71,6 +71,7 @@ class BalanceSnapshot:
     cash: float
     portfolio_value: float
     last_update: datetime
+    initial_cash: float
     positions: List[PaperPosition] = field(default_factory=list)
     orders: List[PaperOrder] = field(default_factory=list)
 
@@ -91,6 +92,12 @@ class PaperBroker:
         self.last_update = datetime.utcnow()
         if initial_cash is not None:
             self._initial_cash = float(initial_cash)
+
+    @property
+    def initial_cash(self) -> float:
+        """Expose the configured starting capital for reporting."""
+
+        return self._initial_cash
 
     def mark_price(self, *, market: str, price: float) -> PaperPosition:
         if price <= 0:
@@ -197,6 +204,7 @@ class PaperBroker:
             cash=self.cash,
             portfolio_value=portfolio_value,
             last_update=self.last_update,
+            initial_cash=self._initial_cash,
             positions=positions,
             orders=self.orders[:20],
         )

@@ -320,6 +320,7 @@ const tradePayoffEl = document.getElementById("metric-trade-payoff");
 const tradeBestEl = document.getElementById("metric-trade-best");
 const tradeWorstEl = document.getElementById("metric-trade-worst");
 const tradeTableBody = document.getElementById("trade-table");
+const tradeHistoryRefreshBtn = document.getElementById("trade-history-refresh");
 const assistantHistoryEl = document.getElementById("assistant-history");
 const assistantStatusEl = document.getElementById("assistant-status");
 const assistantRunBtn = document.getElementById("assistant-run");
@@ -2964,6 +2965,22 @@ const updatePaperSummary = (balance) => {
   if (!paperSummaryEl) return;
   paperSummaryEl.innerHTML = renderPaperSummary(balance);
   updatePaperHeartbeat(balance);
+  if (balance) {
+    const initial = Number(balance.initial_cash ?? DEFAULT_CAPITAL_KRW);
+    const ending = Number(balance.portfolio_value ?? initial);
+    const profit = ending - initial;
+    const totalReturnPct = initial > 0 ? (profit / initial) * 100 : 0;
+    const source = balance.price_source || "manual";
+    updateCapitalSummary({
+      initial_capital: initial,
+      ending_equity: ending,
+      profit_krw: profit,
+      total_return_pct: totalReturnPct,
+      price_source: source,
+      price_message: PAPER_SOURCE_LABELS[source] || PAPER_SOURCE_LABELS.manual,
+      market: balance.market,
+    });
+  }
   if (paperStatusMarketInput && balance?.market) {
     paperStatusMarketInput.value = balance.market;
   }
@@ -3391,11 +3408,29 @@ function renderTradeHistory(entries) {
 
 async function refreshTradeHistory() {
   if (!tradeTableBody) return;
+  if (tradeHistoryRefreshBtn) {
+    tradeHistoryRefreshBtn.disabled = true;
+    tradeHistoryRefreshBtn.setAttribute("aria-busy", "true");
+  }
   try {
     const response = await requestApi("/trading/history?limit=80");
     renderTradeHistory(response?.items ?? []);
   } catch (error) {
     tradeTableBody.innerHTML = `<tr class="table-placeholder"><td colspan="10">거래 이력 불러오기 실패: ${error.message}</td></tr>`;
+  } finally {
+    if (tradeHistoryRefreshBtn) {
+      tradeHistoryRefreshBtn.disabled = false;
+      tradeHistoryRefreshBtn.removeAttribute("aria-busy");
+      tradeHistoryRefreshBtn.setAttribute(
+        "title",
+        `마지막 새로고침: ${new Intl.DateTimeFormat("ko-KR", {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).format(new Date())}`,
+      );
+    }
   }
 }
 
@@ -4087,6 +4122,9 @@ liveBalanceBtn?.addEventListener("click", handleLiveBalance);
 liveRefreshBtn?.addEventListener("click", () => {
   refreshLiveMarket();
 });
+tradeHistoryRefreshBtn?.addEventListener("click", () => {
+  refreshTradeHistory().catch(() => {});
+});
 paperStatusMarketInput?.addEventListener("blur", () => {
   paperStatusMarketInput.value = paperStatusMarketInput.value.toUpperCase();
   fetchPaperStatus();
@@ -4167,7 +4205,6 @@ refreshApiStatus();
 refreshChatStatus().catch(() => {});
 fetchPaperStatus();
 fetchAutopilotStatus().catch(() => {});
-handleSimulation().catch(() => {});
 refreshLiveMarket().catch(() => {});
 refreshMarketIntelligence().catch(() => {});
 refreshDiagnostics().catch(() => {});

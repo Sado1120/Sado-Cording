@@ -110,6 +110,7 @@ app.add_middleware(
 
 
 _paper_broker: PaperBroker = paper_broker()
+_paper_last_price_source: dict[str, str] = {}
 _auto_trader = AutoTrader(broker=_paper_broker)
 _paper_market_preference = "KRW-BTC"
 _paper_interval_preference = "minute1"
@@ -663,6 +664,7 @@ def _serialize_balance(snapshot) -> PaperBalancePayload:
         cash=snapshot.cash,
         portfolio_value=snapshot.portfolio_value,
         last_updated=_ensure_utc(snapshot.last_update),
+        initial_cash=getattr(snapshot, "initial_cash", _paper_broker.initial_cash),
         positions=[_serialize_position(pos) for pos in snapshot.positions],
         orders=[_serialize_order(order) for order in snapshot.orders],
     )
@@ -1428,7 +1430,9 @@ def _refresh_paper_market(market: str, *, interval: str = "minute1") -> str:
         # Heartbeat best-effort; ignore failures so the status endpoint keeps working.
         return "manual"
 
-    return source if source in {"upbit", "synthetic"} else "manual"
+    resolved = source if source in {"upbit", "synthetic"} else "manual"
+    _paper_last_price_source[market] = resolved
+    return resolved
 
 
 def _paper_heartbeat(price_source: str, last_updated: datetime) -> tuple[str, str]:
@@ -1463,7 +1467,7 @@ def _paper_status_response(*, market: Optional[str] = None, interval: str = "min
     _paper_market_preference = target_market
     _paper_interval_preference = target_interval
 
-    price_source = "manual"
+    price_source = _paper_last_price_source.get(target_market, "manual") if target_market else "manual"
     if explicit_refresh and target_market:
         source = _refresh_paper_market(market=target_market, interval=target_interval)
         if source in {"upbit", "synthetic"}:
@@ -1498,8 +1502,11 @@ def _paper_status_response(*, market: Optional[str] = None, interval: str = "min
             "interval": target_interval,
             "heartbeat_state": heartbeat_state,
             "heartbeat_reason": heartbeat_reason,
+            "initial_cash": balance.initial_cash,
         }
     )
+    if target_market:
+        _paper_last_price_source[target_market] = price_source
     return PaperStatusResponse(**payload)
 
 
@@ -1988,6 +1995,7 @@ def get_paper_status(market: str = "KRW-BTC", interval: str = "minute1") -> Pape
 @app.post("/trading/paper/reset", response_model=PaperStatusResponse)
 def reset_paper(payload: PaperResetRequest) -> PaperStatusResponse:
     _paper_broker.reset(initial_cash=payload.initial_cash)
+    _paper_last_price_source.clear()
     return _paper_status_response()
 
 
@@ -1997,6 +2005,7 @@ def mark_paper(payload: PaperMarkRequest) -> PaperStatusResponse:
         _paper_broker.mark_price(market=payload.market, price=payload.price)
     except ExecutionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _paper_last_price_source[payload.market.upper()] = "manual"
     return _paper_status_response()
 
 
