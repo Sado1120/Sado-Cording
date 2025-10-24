@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +64,11 @@ class MarketList:
     detail: Optional[str] = None
     checked_at: Optional[datetime] = None
     backoff_seconds_remaining: float = 0.0
+
+
+def _synthetic_seed_for_market(market: str, interval: Interval, count: int) -> int:
+    token = f"{market.upper()}::{interval}::{count}"
+    return zlib.crc32(token.encode("utf-8")) & 0xFFFFFFFF
 
 
 class MarketDataError(RuntimeError):
@@ -391,7 +397,8 @@ def fetch_upbit_candles(
 
     count = max(10, min(count, 200))
     if _upbit_network_down():
-        synthetic = generate_synthetic_prices(days=count)
+        seed = _synthetic_seed_for_market(market, interval, count)
+        synthetic = generate_synthetic_prices(days=count, seed=seed)
         state = get_upbit_network_state()
         return MarketData(
             candles=synthetic,
@@ -416,7 +423,8 @@ def fetch_upbit_candles(
             message="업비트 캔들 데이터를 가져오지 못해 시뮬레이션 시세를 사용합니다.",
             detail=detail,
         )
-        synthetic = generate_synthetic_prices(days=count)
+        seed = _synthetic_seed_for_market(market, interval, count)
+        synthetic = generate_synthetic_prices(days=count, seed=seed)
         state = get_upbit_network_state()
         return MarketData(
             candles=synthetic,

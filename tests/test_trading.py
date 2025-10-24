@@ -3,7 +3,9 @@ import math
 
 import pytest
 
+import backend.app as app_module
 from backend import trading
+from backend.schemas import SimulationRequest
 
 
 def test_generate_synthetic_prices_len_and_sorting():
@@ -58,6 +60,28 @@ def test_run_ema_strategy_reports_risk_metrics():
         "p95_return_pct",
         "average_return_pct",
     }
+
+
+def test_run_ema_strategy_reports_equity_totals():
+    candles = trading.generate_synthetic_prices(days=45, seed=21)
+    report = trading.run_ema_strategy(candles, initial_capital=2_000_000)
+
+    assert report.initial_capital == 2_000_000
+    assert pytest.approx(report.ending_equity, rel=1e-6) == pytest.approx(
+        report.equity_curve[-1], rel=1e-6
+    )
+    assert isinstance(report.ending_equity, float)
+
+
+def test_simulate_strategy_returns_profit_fields():
+    payload = SimulationRequest(use_live_data=False, seed=99, market="KRW-BTC")
+    response = app_module.simulate_strategy(payload)
+
+    assert response.initial_capital == pytest.approx(payload.initial_capital)
+    expected_profit = response.ending_equity - response.initial_capital
+    assert response.profit_krw == pytest.approx(expected_profit)
+    assert response.price_source in {"synthetic", "upbit", "manual"}
+    assert response.market in {None, "KRW-BTC"}
 
 
 def test_rebalance_portfolio_orders_sum_to_zero():

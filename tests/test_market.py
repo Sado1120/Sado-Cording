@@ -34,6 +34,8 @@ def test_fetch_upbit_candles_fallback(monkeypatch):
     assert len(data.candles) == 20
     assert data.status == "down"
     assert "시세" in data.message
+    second = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert [c.close for c in data.candles] == [c.close for c in second.candles]
 
 
 def test_fetch_upbit_candles_offline_mode(monkeypatch):

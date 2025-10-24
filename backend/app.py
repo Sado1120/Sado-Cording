@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from time import perf_counter
@@ -125,6 +126,22 @@ def _safe_number(
     return numeric
 
 
+def _derive_synthetic_seed(
+    *,
+    market: str,
+    interval: str,
+    count: int,
+    seed: int | None = None,
+) -> int:
+    """Derive a deterministic seed for synthetic price generation."""
+
+    if seed is not None:
+        return seed
+
+    token = f"{market.upper()}::{interval}::{count}"
+    return zlib.crc32(token.encode("utf-8")) & 0xFFFFFFFF
+
+
 def _sanitize_metrics_payload(metrics: ai.MarketAIMetrics) -> MarketAIMetricsPayload:
     return MarketAIMetricsPayload(
         fast_ema=_safe_number(metrics.fast_ema),
@@ -201,11 +218,15 @@ def _load_candles_with_fallback(
         candles = data.candles
         source = data.source
     except MarketDataError:
-        candles = trading.generate_synthetic_prices(days=max(count, 120))
+        days = max(count, 120)
+        seed = _derive_synthetic_seed(market=market, interval=interval, count=days)
+        candles = trading.generate_synthetic_prices(days=days, seed=seed)
         source = "synthetic"
 
     if len(candles) < 30:
-        candles = trading.generate_synthetic_prices(days=max(count, 120))
+        days = max(count, 120)
+        seed = _derive_synthetic_seed(market=market, interval=interval, count=days)
+        candles = trading.generate_synthetic_prices(days=days, seed=seed)
         source = "synthetic"
 
     return candles, source
@@ -627,6 +648,12 @@ def health() -> dict:
 def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
     candles: list[trading.Candle]
     strategy_market: Optional[str] = payload.market.upper() if payload.market else None
+    interval = payload.interval or "minute60"
+    fetch_count = 200
+    fallback_market = (payload.market or "KRW-BTC").upper()
+    price_source: str = "manual"
+    price_message: Optional[str] = None
+    price_detail: Optional[str] = None
 
     if payload.prices:
         candles = [
@@ -640,24 +667,51 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
             )
             for item in payload.prices
         ]
+        price_source = "manual"
+        price_message = "사용자 제공 시세를 사용했습니다."
     elif payload.use_live_data or payload.market:
-        market_code = (payload.market or "KRW-BTC").upper()
-        strategy_market = market_code
-        interval = payload.interval or "minute60"
+        strategy_market = fallback_market
         try:
             market_data = fetch_upbit_candles(
-                market=market_code,
+                market=fallback_market,
                 interval=interval,  # type: ignore[arg-type]
-                count=200,
+                count=fetch_count,
             )
+        except MarketDataError as exc:
+            market_data = None
+            price_detail = str(exc)
+        if market_data:
             candles = market_data.candles
-        except MarketDataError:
+            price_source = market_data.source
+            price_message = market_data.message or None
+            if market_data.detail:
+                price_detail = market_data.detail
+        else:
             candles = []
+            price_source = "synthetic"
 
         if not candles:
-            candles = trading.generate_synthetic_prices(seed=payload.seed)
+            days = max(fetch_count, 120)
+            seed = _derive_synthetic_seed(
+                market=fallback_market,
+                interval=interval,
+                count=days,
+                seed=payload.seed,
+            )
+            candles = trading.generate_synthetic_prices(days=days, seed=seed)
+            price_source = "synthetic"
+            price_message = price_message or "업비트 시세를 가져오지 못해 합성 데이터를 사용했습니다."
     else:
-        candles = trading.generate_synthetic_prices(seed=payload.seed)
+        days = max(fetch_count, 120)
+        seed = _derive_synthetic_seed(
+            market=fallback_market,
+            interval=interval,
+            count=days,
+            seed=payload.seed,
+        )
+        candles = trading.generate_synthetic_prices(days=days, seed=seed)
+        price_source = "synthetic"
+        price_message = "시뮬레이션 시세를 사용했습니다."
 
     try:
         report = trading.run_ema_strategy(
@@ -694,6 +748,10 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
     trade_summary = trading.summarize_trades(report.trades)
 
     return SimulationResponse(
+        market=report.market,
+        initial_capital=report.initial_capital,
+        ending_equity=report.ending_equity,
+        profit_krw=report.ending_equity - report.initial_capital,
         total_return_pct=report.total_return_pct,
         annualized_return_pct=report.annualized_return_pct,
         max_drawdown_pct=report.max_drawdown_pct,
@@ -726,6 +784,9 @@ def simulate_strategy(payload: SimulationRequest) -> SimulationResponse:
         equity_curve=report.equity_curve,
         trade_summary=trade_summary,
         monte_carlo_summary=report.monte_carlo_summary,
+        price_source=price_source,
+        price_message=price_message,
+        price_detail=price_detail,
     )
 
 

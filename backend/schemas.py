@@ -76,6 +76,13 @@ class MonteCarloSummary(BaseModel):
 
 
 class SimulationResponse(BaseModel):
+    market: Optional[str] = None
+    initial_capital: float
+    ending_equity: float
+    profit_krw: float
+    price_source: Literal["upbit", "synthetic", "manual"] = "manual"
+    price_message: Optional[str] = None
+    price_detail: Optional[str] = None
     total_return_pct: float
     annualized_return_pct: float
     max_drawdown_pct: float

@@ -275,8 +275,15 @@ const ratioFormatter = new Intl.NumberFormat("ko-KR", {
   maximumFractionDigits: 2,
 });
 const currencyFormatter = new Intl.NumberFormat("ko-KR");
+const currencySymbolFormatter = new Intl.NumberFormat("ko-KR", {
+  style: "currency",
+  currency: "KRW",
+  maximumFractionDigits: 0,
+});
 const formatPercentNumber = (value) => `${ratioFormatter.format(value)}%`;
+const formatPercent = (value) => `${percentFormatter.format(value)}%`;
 const formatCurrency = (value) => currencyFormatter.format(Math.round(value ?? 0));
+const formatCurrencyWithSymbol = (value) => currencySymbolFormatter.format(Math.round(value ?? 0));
 
 const marketOptionsEl = document.getElementById("market-options");
 const marketSearchInput = document.getElementById("market-search");
@@ -292,6 +299,11 @@ const toplineAutopilotNoteEl = document.getElementById("topline-autopilot-note")
 const toplineAutopilotCountdownEl = document.getElementById("topline-autopilot-countdown");
 const toplineLiveStatusEl = document.getElementById("topline-live-status");
 const toplineLiveNoteEl = document.getElementById("topline-live-note");
+const initialCapitalEl = document.getElementById("metric-initial-capital");
+const endingEquityEl = document.getElementById("metric-ending-equity");
+const profitKrwEl = document.getElementById("metric-profit-krw");
+const marketNoteEl = document.getElementById("metric-market-note");
+const priceSourceEl = document.getElementById("metric-price-source");
 
 const totalReturnEl = document.getElementById("metric-total-return");
 const annualReturnEl = document.getElementById("metric-annual-return");
@@ -449,6 +461,12 @@ const PAPER_SOURCE_LABELS = {
   upbit: "업비트 실시간 시세 연동",
   synthetic: "업비트 연결 실패 - 시뮬레이션 시세 사용",
   manual: "수동 시세 입력 (테스트/주문 반영)",
+};
+
+const PRICE_SOURCE_LABELS = {
+  upbit: "업비트 실시간 시세",
+  synthetic: "시뮬레이션 시세",
+  manual: "사용자 제공 시세",
 };
 
 let cachedMarkets = [...FALLBACK_MARKETS];
@@ -1489,7 +1507,6 @@ const updateApiStatus = (state, message) => {
   apiStatusEl.textContent = message;
 };
 
-const formatPercent = (value) => `${percentFormatter.format(value)}%`;
 const formatRatio = (value) =>
   Number.isFinite(value) && Math.abs(value) !== Infinity
     ? ratioFormatter.format(value)
@@ -3076,7 +3093,50 @@ async function simulateStrategy(formValues) {
   });
 }
 
+function updateCapitalSummary(report) {
+  if (!report) return;
+
+  const initial = Number(report.initial_capital ?? 0);
+  const ending = Number(report.ending_equity ?? initial);
+  const profit = Number(report.profit_krw ?? ending - initial);
+
+  if (initialCapitalEl) {
+    initialCapitalEl.textContent = formatCurrencyWithSymbol(initial);
+  }
+  if (endingEquityEl) {
+    endingEquityEl.textContent = formatCurrencyWithSymbol(ending);
+  }
+  if (profitKrwEl) {
+    const sign = profit > 0 ? "+" : profit < 0 ? "-" : "";
+    const profitLabel = `${sign}${formatCurrencyWithSymbol(Math.abs(profit))} (${formatPercent(
+      report.total_return_pct ?? 0,
+    )})`;
+    profitKrwEl.textContent = profitLabel;
+    profitKrwEl.classList.toggle("profit-positive", profit >= 0);
+    profitKrwEl.classList.toggle("profit-negative", profit < 0);
+  }
+  if (marketNoteEl) {
+    if (report.market) {
+      marketNoteEl.textContent = `전략 마켓: ${report.market}`;
+      marketNoteEl.classList.remove("muted");
+    } else {
+      marketNoteEl.textContent = "전략 마켓: -";
+      marketNoteEl.classList.add("muted");
+    }
+  }
+  if (priceSourceEl) {
+    const source = report.price_source || "manual";
+    const label = PRICE_SOURCE_LABELS[source] || "데이터 출처 미확인";
+    const detail = report.price_message || report.price_detail || "";
+    priceSourceEl.dataset.source = source;
+    priceSourceEl.textContent = detail ? `${label} · ${detail}` : label;
+    const shouldMute = source === "upbit" && !detail;
+    priceSourceEl.classList.toggle("muted", shouldMute);
+  }
+}
+
 function updateMetrics(report) {
+  updateCapitalSummary(report);
   totalReturnEl.textContent = formatPercent(report.total_return_pct);
   annualReturnEl.textContent = formatPercent(report.annualized_return_pct);
   drawdownEl.textContent = formatPercent(report.max_drawdown_pct);

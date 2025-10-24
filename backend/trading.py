@@ -51,6 +51,8 @@ class StrategyReport:
 
     trades: List[Trade]
     equity_curve: List[float]
+    initial_capital: float
+    ending_equity: float
     total_return_pct: float
     annualized_return_pct: float
     max_drawdown_pct: float
@@ -590,9 +592,13 @@ def run_ema_strategy(
         horizon=len(trades) if trades else None,
     )
 
+    ending_equity = cash
+
     return StrategyReport(
         trades=trades,
         equity_curve=equity_curve,
+        initial_capital=initial_capital,
+        ending_equity=ending_equity,
         total_return_pct=total_return_pct,
         annualized_return_pct=annualized_return_pct,
         max_drawdown_pct=max_drawdown_pct,
