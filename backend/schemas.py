@@ -620,7 +620,7 @@ class AutoPilotConfigRequest(BaseModel):
     auto_select_market: bool = True
     recommendation_base: str = Field("KRW", min_length=2)
     recommendation_interval: str = Field("minute60")
-    recommendation_max_markets: int = Field(40, ge=5, le=120)
+    recommendation_max_markets: int = Field(180, ge=5, le=200)
     recommendation_include_warnings: bool = False
 
     @root_validator(pre=True)
