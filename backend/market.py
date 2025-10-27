@@ -659,6 +659,26 @@ def get_upbit_network_state() -> Dict[str, Any]:
     }
 
 
+def is_upbit_network_operational() -> bool:
+    """Return whether live Upbit data is currently considered usable."""
+
+    if not _UPBIT_ENABLE_NETWORK:
+        return False
+
+    state = get_upbit_network_state()
+    status = state.get("status", "unknown")
+
+    if status in {"up", "warning"}:
+        return True
+
+    if status == "down":
+        remaining = float(state.get("backoff_seconds_remaining", 0.0) or 0.0)
+        return remaining <= 0.0 and bool(_recent_market_cache)
+
+    # Unknown 상태에서는 아직 네트워크를 판별하지 못했으므로 낙관적으로 허용한다.
+    return True
+
+
 def _coerce_rate_limit_error(error: BaseException) -> BaseException:
     """Convert HTTP status errors into a dedicated rate-limit exception."""
 

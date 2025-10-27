@@ -251,6 +251,65 @@ def test_autotrader_rebalances_when_cash_short():
         trader.stop()
 
 
+def test_autotrader_live_waits_when_upbit_down(monkeypatch):
+    import backend.market as market_module
+
+    down_state = {
+        "status": "down",
+        "message": "업비트 연결 실패",
+        "detail": "네트워크 장애",
+        "checked_at": datetime.now(timezone.utc),
+        "backoff_seconds_remaining": 42.0,
+    }
+
+    monkeypatch.setattr(market_module, "is_upbit_network_operational", lambda: False)
+    monkeypatch.setattr(market_module, "get_upbit_network_state", lambda: down_state)
+
+    fetch_called = False
+
+    def forbidden_fetcher(**_kwargs):
+        nonlocal fetch_called
+        fetch_called = True
+        raise AssertionError("network guard should prevent candle fetch")
+
+    broker = PaperBroker()
+    trader = AutoTrader(
+        broker=broker,
+        candle_fetcher=forbidden_fetcher,
+        news_fetcher=_fake_news_fetcher,
+        analyse_market=ai.analyse_market,
+        autopilot_builder=_fake_autopilot_builder,
+        portfolio_builder=lambda **_: None,
+        time_provider=lambda: datetime.now(timezone.utc),
+        notifier=lambda _message: True,
+        recommendation_scanner=None,
+    )
+
+    monkeypatch.setattr(trader, "_ensure_thread", lambda: None)
+
+    config = AutoTraderConfig(
+        mode=OrderMode.LIVE,
+        market="KRW-BTC",
+        interval="minute60",
+        risk_appetite=0.6,
+        capital=20_000_000,
+        poll_interval=600.0,
+        include_portfolio=False,
+        max_position_pct=0.2,
+        min_confidence_pct=50.0,
+    )
+
+    state = trader.start(config)
+    try:
+        assert fetch_called is False
+        assert state.last_plan is None
+        assert state.last_skip_reason is not None
+        assert "업비트" in state.last_skip_reason
+        assert any("업비트" in entry.message for entry in state.logs)
+    finally:
+        trader.stop()
+
+
 def test_autotrader_notifier_invoked():
     notifications: list[str] = []
 

@@ -18,6 +18,7 @@ from backend.market import (
     fetch_upbit_candles,
     fetch_upbit_markets,
     get_upbit_recovery_log,
+    is_upbit_network_operational,
     reset_market_state_for_tests,
 )
 from backend.schemas import PortfolioOptimizationRequest
@@ -39,6 +40,24 @@ def test_fetch_upbit_candles_fallback(monkeypatch):
     assert data.message
     second = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
     assert [c.close for c in data.candles] == [c.close for c in second.candles]
+    reset_market_state_for_tests()
+
+
+def test_is_upbit_network_operational_reflects_down_state(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+    assert is_upbit_network_operational() is True
+
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("network down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
+
+    data = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert data.source == "synthetic"
+    assert is_upbit_network_operational() is False
+
     reset_market_state_for_tests()
 
 

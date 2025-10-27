@@ -16,6 +16,8 @@ from .market import (
     fetch_upbit_candles,
     fetch_upbit_markets,
     get_fallback_market_infos,
+    get_upbit_network_state,
+    is_upbit_network_operational,
 )
 from .notifications import enqueue_digest, flush_due_digests, notify_synology_chat
 from .schemas import MarketRecommendationsResponse, OrderMode
@@ -254,6 +256,30 @@ class AutoTrader:
             if config is None:
                 return
             self._state.last_cycle_started_at = self._time_provider()
+
+        if config.mode == OrderMode.LIVE and not is_upbit_network_operational():
+            network_state = get_upbit_network_state()
+            guard_reason = "업비트 실시간 연결이 복구될 때까지 관망합니다."
+            message = network_state.get("message") or guard_reason
+            self._append_log(
+                "warning",
+                f"{message} · 실거래 보호 모드로 관망합니다.",
+            )
+            self._set_skip_reason(guard_reason)
+            with self._lock:
+                self._state.last_plan = None
+                self._state.last_insight = None
+                self._state.last_price_source = "network-down"
+                self._state.analysis_markets = []
+                self._state.analysis_market_count = 0
+                self._state.last_error = None
+                self._state.last_cycle_completed_at = self._time_provider()
+                interval_seconds = max(10.0, float(config.poll_interval))
+                self._state.next_cycle_due_at = self._state.last_cycle_completed_at + timedelta(
+                    seconds=interval_seconds
+                )
+            flush_due_digests(now=self._time_provider(), notifier=self._notifier)
+            return
 
         try:
             market_code, candidate_markets = self._resolve_market(config)
