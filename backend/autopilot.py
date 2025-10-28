@@ -12,6 +12,7 @@ from .execution import BalanceSnapshot, ExecutionError, PaperBroker, create_upbi
 from .market import (
     MarketData,
     MarketDataError,
+    attempt_upbit_self_heal,
     fetch_authoritative_news,
     fetch_upbit_candles,
     fetch_upbit_markets,
@@ -98,6 +99,11 @@ class AutoTraderState:
     analysis_market_count: int = 0
     candidate_rotation_cursor: int = 0
     repeat_market_count: int = 0
+    last_network_status: Optional[str] = None
+    last_network_message: Optional[str] = None
+    last_network_detail: Optional[str] = None
+    last_network_checked_at: Optional[datetime] = None
+    last_network_backoff: Optional[float] = None
 
 
 @dataclass
@@ -209,6 +215,11 @@ class AutoTrader:
                 analysis_market_count=self._state.analysis_market_count,
                 candidate_rotation_cursor=self._state.candidate_rotation_cursor,
                 repeat_market_count=self._state.repeat_market_count,
+                last_network_status=self._state.last_network_status,
+                last_network_message=self._state.last_network_message,
+                last_network_detail=self._state.last_network_detail,
+                last_network_checked_at=self._state.last_network_checked_at,
+                last_network_backoff=self._state.last_network_backoff,
             )
             if (
                 snapshot.last_skip_reason is None
@@ -276,6 +287,21 @@ class AutoTrader:
                 return
             self._state.last_cycle_started_at = self._time_provider()
 
+        network_state = get_upbit_network_state()
+        with self._lock:
+            self._state.last_network_status = str(network_state.get("status") or "unknown")
+            self._state.last_network_message = network_state.get("message")
+            self._state.last_network_detail = network_state.get("detail")
+            checked_at = network_state.get("checked_at")
+            self._state.last_network_checked_at = (
+                checked_at if isinstance(checked_at, datetime) else None
+            )
+            try:
+                backoff = float(network_state.get("backoff_seconds_remaining", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                backoff = 0.0
+            self._state.last_network_backoff = max(0.0, backoff)
+
         if config.mode == OrderMode.LIVE and not is_upbit_network_operational():
             network_state = get_upbit_network_state()
             guard_reason = "업비트 실시간 연결이 복구될 때까지 관망합니다."
@@ -285,6 +311,51 @@ class AutoTrader:
                 f"{message} · 실거래 보호 모드로 관망합니다.",
             )
             self._set_skip_reason(guard_reason)
+            recovery = attempt_upbit_self_heal("autopilot-network-guard")
+            status = recovery.get("status") if isinstance(recovery, dict) else None
+            detail = recovery.get("steps") if isinstance(recovery, dict) else None
+            if status:
+                if status == "cooldown":
+                    self._append_log(
+                        "info",
+                        "업비트 자가 복구 대기 중입니다. 잠시 후 다시 시도합니다.",
+                    )
+                elif status == "success":
+                    self._append_log(
+                        "info",
+                        "업비트 연결 복구 절차를 완료했습니다.",
+                    )
+                elif status == "skipped":
+                    self._append_log(
+                        "info",
+                        "업비트 네트워크가 비활성화되어 자가 복구를 건너뜁니다.",
+                    )
+                else:
+                    self._append_log(
+                        "info",
+                        f"업비트 자가 복구 상태: {status}",
+                    )
+            if isinstance(detail, list) and detail:
+                last_step = detail[-1]
+                description = last_step.get("detail") if isinstance(last_step, dict) else None
+                if description:
+                    self._append_log("debug", f"자가 복구 단계: {description}")
+            refreshed_state = get_upbit_network_state()
+            with self._lock:
+                self._state.last_network_status = str(refreshed_state.get("status") or "unknown")
+                self._state.last_network_message = refreshed_state.get("message")
+                self._state.last_network_detail = refreshed_state.get("detail")
+                checked_at = refreshed_state.get("checked_at")
+                self._state.last_network_checked_at = (
+                    checked_at if isinstance(checked_at, datetime) else None
+                )
+                try:
+                    backoff = float(
+                        refreshed_state.get("backoff_seconds_remaining", 0.0) or 0.0
+                    )
+                except (TypeError, ValueError):
+                    backoff = 0.0
+                self._state.last_network_backoff = max(0.0, backoff)
             with self._lock:
                 self._state.last_plan = None
                 self._state.last_insight = None

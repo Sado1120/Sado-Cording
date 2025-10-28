@@ -392,6 +392,9 @@ const rebalanceOutputEl = document.getElementById("rebalance-output");
 const blueprintOutputEl = document.getElementById("blueprint-output");
 const yearEl = document.getElementById("year");
 
+const autopilotNetworkEl = document.getElementById("autopilot-network");
+const autopilotNetworkPillEl = document.getElementById("autopilot-network-pill");
+
 const recommendationsPanelEl = document.getElementById("recommendations-panel");
 const recommendationsListEl = document.getElementById("recommendations-list");
 const recommendationsFilterEl = document.getElementById("recommendations-filter");
@@ -2287,6 +2290,44 @@ const renderAutopilotStatus = (status) => {
       : "-";
   }
 
+  if (autopilotNetworkPillEl) {
+    const networkStatus = status?.network_status || "unknown";
+    let pillStatus = "loading";
+    let pillLabel = "확인 중";
+    if (networkStatus === "up") {
+      pillStatus = "online";
+      pillLabel = "연결";
+    } else if (networkStatus === "warning") {
+      pillStatus = "warning";
+      pillLabel = "주의";
+    } else if (networkStatus === "down") {
+      pillStatus = "offline";
+      pillLabel = "중단";
+    }
+    autopilotNetworkPillEl.dataset.status = pillStatus;
+    autopilotNetworkPillEl.textContent = pillLabel;
+  }
+
+  if (autopilotNetworkEl) {
+    const messages = [];
+    const baseMessage = status?.network_message || "업비트 연결 상태를 확인하는 중입니다.";
+    messages.push(baseMessage);
+    if (status?.network_detail) {
+      messages.push(status.network_detail);
+    }
+    if (typeof status?.network_backoff_seconds === "number" && status.network_backoff_seconds > 0.5) {
+      messages.push(`재시도까지 약 ${Math.round(status.network_backoff_seconds)}초`);
+    }
+    if (status?.network_checked_at) {
+      const checkedAt = new Date(status.network_checked_at);
+      if (!Number.isNaN(checkedAt.getTime())) {
+        messages.push(`${formatRelativeTime(checkedAt)} 확인`);
+      }
+    }
+    autopilotNetworkEl.textContent = messages.join(" · ");
+    autopilotNetworkEl.classList.toggle("muted", messages.length === 0);
+  }
+
   if (autopilotLastErrorEl) {
     autopilotLastErrorEl.textContent = status?.last_error || "";
     autopilotLastErrorEl.classList.toggle("muted", !status?.last_error);
@@ -2478,6 +2519,14 @@ const fetchAutopilotStatus = async () => {
     if (toplineAutopilotStatusEl) {
       toplineAutopilotStatusEl.dataset.status = "offline";
       toplineAutopilotStatusEl.textContent = "오프라인";
+    }
+    if (autopilotNetworkPillEl) {
+      autopilotNetworkPillEl.dataset.status = "offline";
+      autopilotNetworkPillEl.textContent = "중단";
+    }
+    if (autopilotNetworkEl) {
+      autopilotNetworkEl.textContent = error.message || "업비트 연결 상태 확인 실패";
+      autopilotNetworkEl.classList.remove("muted");
     }
     if (toplineAutopilotNoteEl) {
       toplineAutopilotNoteEl.textContent = error.message || "연결 실패";

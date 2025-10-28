@@ -750,6 +750,11 @@ class AutoPilotStatusResponse(BaseModel):
     analysis_market_count: int = 0
     candidate_rotation_cursor: int = 0
     repeat_market_count: int = 0
+    network_status: Optional[str] = None
+    network_message: Optional[str] = None
+    network_detail: Optional[str] = None
+    network_checked_at: Optional[datetime] = None
+    network_backoff_seconds: float = 0.0
 
 
 class TradeHistoryItemPayload(BaseModel):

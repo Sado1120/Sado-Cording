@@ -117,6 +117,8 @@ def test_status_contains_recommendations_and_source():
             >= len(follow_up.recommendation_markets)
             >= 1
         )
+        assert follow_up.last_network_status in {"unknown", "up", "warning", "down"}
+        assert follow_up.last_network_message is not None
 
         mutated = follow_up.last_recommendations
         mutated.append("mutated")

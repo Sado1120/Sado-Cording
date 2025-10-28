@@ -674,6 +674,11 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
         analysis_market_count=state.analysis_market_count,
         candidate_rotation_cursor=state.candidate_rotation_cursor,
         repeat_market_count=state.repeat_market_count,
+        network_status=state.last_network_status,
+        network_message=state.last_network_message,
+        network_detail=state.last_network_detail,
+        network_checked_at=state.last_network_checked_at,
+        network_backoff_seconds=state.last_network_backoff or 0.0,
     )
 
 
