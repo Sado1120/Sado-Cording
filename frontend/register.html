@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Language" content="ko" />
+    <title>Sado Trade Bot · 회원가입</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.css"
+      crossorigin="anonymous"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.__SADO_API_BASE__ = `${window.location.origin}/api`;
+    </script>
+    <script src="register.js" type="module" defer></script>
+  </head>
+  <body class="auth-body">
+    <main class="auth-screen" aria-labelledby="register-title">
+      <section class="auth-hero">
+        <h1 class="auth-hero__brand">Sado Trade Bot</h1>
+        <p class="auth-hero__tagline">
+          이메일 인증과 Google Authenticator 2단계 인증을 거쳐 안전하게 대시보드 계정을 생성하세요.
+        </p>
+        <p class="auth-hero__version" id="register-version" aria-live="polite">버전 정보를 불러오는 중…</p>
+      </section>
+      <section class="auth-panels">
+        <section class="auth-wizard" data-auth-wizard>
+          <header class="auth-wizard__header">
+            <h2 class="auth-wizard__title" id="register-title">새 계정 온보딩</h2>
+            <p class="auth-wizard__summary">
+              1단계: 계정 정보 입력 → 2단계: 이메일 인증 → 3단계: Google Authenticator 등록 순으로 진행합니다.
+            </p>
+            <nav class="auth-steps" id="register-steps" aria-label="회원가입 단계">
+              <button type="button" class="auth-step" data-step="register">1. 계정 정보</button>
+              <button type="button" class="auth-step" data-step="verify">2. 이메일 인증</button>
+              <button type="button" class="auth-step" data-step="totp">3. 보안 설정</button>
+            </nav>
+          </header>
+          <div class="auth-wizard__body">
+            <form class="auth-card auth-card--page" id="register-form" autocomplete="off" novalidate data-step-target="register">
+              <h3 class="auth-card__title">계정 정보 입력</h3>
+              <p class="auth-card__subtitle">이메일과 8자 이상의 비밀번호를 입력하면 인증 코드를 보내드립니다.</p>
+              <div class="auth-card__field">
+                <span>API 엔드포인트</span>
+                <input
+                  id="register-api-base"
+                  name="register-api-base"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="off"
+                  placeholder="http://127.0.0.1:8000"
+                  aria-describedby="register-api-status"
+                />
+                <small class="auth-card__footnote" id="register-api-status">대시보드와 백엔드가 동일한 주소인지 확인하세요.</small>
+              </div>
+              <p class="auth-card__error" id="register-error" role="alert" hidden></p>
+              <label class="auth-card__field" for="register-email">
+                <span>이메일</span>
+                <input id="register-email" name="register-email" type="email" autocomplete="email" placeholder="your@email.com" required />
+              </label>
+              <label class="auth-card__field" for="register-password">
+                <span>비밀번호</span>
+                <input id="register-password" name="register-password" type="password" autocomplete="new-password" placeholder="8자 이상" required />
+              </label>
+              <label class="auth-card__field" for="register-confirm">
+                <span>비밀번호 확인</span>
+                <input id="register-confirm" name="register-confirm" type="password" autocomplete="new-password" placeholder="비밀번호 재입력" required />
+              </label>
+              <div class="auth-card__actions">
+                <button class="btn btn--primary" type="submit">인증 코드 받기</button>
+                <a class="btn btn--ghost" href="login.html">로그인 화면으로</a>
+              </div>
+              <p class="auth-card__hint" id="register-hint"></p>
+            </form>
+
+            <form
+              class="auth-card auth-card--page"
+              id="verify-form"
+              autocomplete="off"
+              novalidate
+              data-step-target="verify"
+              hidden
+            >
+              <h3 class="auth-card__title">이메일 인증</h3>
+              <p class="auth-card__subtitle" id="verify-instructions">발송된 6자리 인증 코드를 입력하세요.</p>
+              <p class="auth-card__error" id="verify-error" role="alert" hidden></p>
+              <p class="auth-card__hint" id="verify-email"></p>
+              <label class="auth-card__field" for="verify-code">
+                <span>인증 코드</span>
+                <input id="verify-code" name="verify-code" type="text" inputmode="numeric" pattern="\d{6}" placeholder="123456" required />
+              </label>
+              <div class="auth-card__actions auth-card__actions--stack">
+                <button class="btn btn--primary" type="submit">인증 완료</button>
+                <button class="btn btn--ghost" type="button" data-action="resend-code">코드 재전송</button>
+              </div>
+              <p class="auth-card__hint" id="verify-hint"></p>
+            </form>
+
+            <section class="auth-card auth-card--page" id="totp-step" data-step-target="totp" hidden>
+              <h3 class="auth-card__title">Google Authenticator 등록</h3>
+              <p class="auth-card__subtitle" id="totp-instructions">
+                아래 QR 코드를 Google Authenticator 앱으로 스캔하거나 보안 키를 수동으로 입력하세요.
+              </p>
+              <div class="auth-card__totp-qr" id="totp-qr-wrapper" hidden>
+                <img id="totp-qr" alt="Google Authenticator 등록용 QR 코드" />
+              </div>
+              <p class="auth-card__hint">QR 코드가 보이지 않으면 보안 키를 직접 입력하거나 아래 링크를 열어 등록하세요.</p>
+              <code class="auth-card__secret" id="totp-secret"></code>
+              <a class="auth-card__link" id="totp-uri" href="#" target="_blank" rel="noopener" hidden>Google Authenticator 앱에서 열기</a>
+              <div class="auth-card__actions auth-card__actions--inline">
+                <button class="btn btn--ghost" type="button" data-action="copy-totp">보안 키 복사</button>
+                <a class="btn btn--primary" href="login.html">로그인으로 이동</a>
+              </div>
+              <p class="auth-card__hint" id="totp-extra"></p>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
