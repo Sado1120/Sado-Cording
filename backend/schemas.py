@@ -783,6 +783,8 @@ class AutoPilotConfigRequest(BaseModel):
     @root_validator(pre=True)
     def _normalise_market(cls, values: dict) -> dict:
         raw_market = values.get("market", DEFAULT_AUTOPILOT_MARKET)
+        if "auto_select_market" not in values:
+            values["auto_select_market"] = False
         auto_select = bool(values.get("auto_select_market", True))
 
         market = str(raw_market or "").strip().upper()

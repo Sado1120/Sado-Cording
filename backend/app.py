@@ -15,6 +15,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import ai, notifications, trading
 
@@ -223,7 +224,15 @@ async def enforce_authentication(request: Request, call_next):
         return await call_next(request)
 
     token = _extract_bearer_token(request)
-    ensure_authenticated(token)
+    try:
+        ensure_authenticated(token)
+    except HTTPException as exc:
+        payload = {"detail": exc.detail}
+        response = JSONResponse(status_code=exc.status_code, content=payload)
+        if exc.headers:
+            for key, value in exc.headers.items():
+                response.headers[key] = value
+        return response
     return await call_next(request)
 
 
@@ -2087,19 +2096,7 @@ def _compute_market_recommendations(
     max_markets = max(limit, min(max_markets, 120))
 
     fingerprint = _normalise_recent_markets(recent_markets)
-    cache_key = (
-        base_currency,
-        interval,
-        limit,
-        max_markets,
-        bool(include_warnings),
-        fingerprint[:_RECENT_HISTORY_CACHE_FINGERPRINT],
-    )
-    cached = _RECOMMENDATION_CACHE.get(cache_key)
     now_ts = time.time()
-    if cached and now_ts - cached[0] < _RECOMMENDATION_CACHE_TTL:
-        return cached[1]
-
     errors: list[str] = []
     try:
         listing = fetch_upbit_markets(only_krw=base_currency != "ALL")
@@ -2115,6 +2112,20 @@ def _compute_market_recommendations(
         base_markets = get_fallback_market_infos(only_krw=base_currency != "ALL")
         listing_source = "fallback"
         errors.append(f"실시간 마켓 목록 조회 실패: {exc}")
+
+    listing_fingerprint = tuple(info.market for info in base_markets[:max_markets])
+    cache_key = (
+        base_currency,
+        interval,
+        limit,
+        max_markets,
+        bool(include_warnings),
+        fingerprint[:_RECENT_HISTORY_CACHE_FINGERPRINT],
+        listing_fingerprint,
+    )
+    cached = _RECOMMENDATION_CACHE.get(cache_key)
+    if cached and now_ts - cached[0] < _RECOMMENDATION_CACHE_TTL:
+        return cached[1]
 
     selection: TopMarketSelection
     if len(base_markets) <= max_markets:

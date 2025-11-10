@@ -87,10 +87,6 @@ except Exception:  # pragma: no cover - degrade gracefully when missing
     httpx = None  # type: ignore
 
 
-_DEFAULT_EMAIL = "sado0809@example.com"
-_DEFAULT_PASSWORD = "honges08!!"
-_DEFAULT_TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # HELLOWORLD base32 – replace in production
-
 _EMAIL_REGEX = re.compile(
     r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 )
@@ -185,17 +181,38 @@ class CredentialStore:
         self._path = Path(path or os.getenv("SECURITY_STORE_PATH", "./data/security.json"))
         self._lock = threading.RLock()
         self._data: Dict[str, Any] | None = None
+        env_username = os.getenv("DASHBOARD_USERNAME")
+        username = default_username or (env_username.strip() if env_username else None)
+        if not username:
+            raise RuntimeError(
+                "Dashboard credentials not configured. Set DASHBOARD_USERNAME or "
+                "provide default_username when instantiating CredentialStore."
+            )
+
+        env_password = os.getenv("DASHBOARD_PASSWORD")
+        if default_password is not None:
+            password = default_password
+        elif env_password:
+            password = env_password.strip()
+        else:
+            password = secrets.token_urlsafe(24)
+
         env_totp_secret = os.getenv("DASHBOARD_TOTP_SECRET")
+        sanitized_env_totp = None
+        if env_totp_secret is not None:
+            sanitized_env_totp = re.sub(r"\s+", "", env_totp_secret).upper()
+            if not sanitized_env_totp:
+                sanitized_env_totp = None
         if default_totp_secret is not None:
             initial_totp_secret = default_totp_secret
-        elif env_totp_secret is not None:
-            initial_totp_secret = env_totp_secret
+        elif sanitized_env_totp is not None:
+            initial_totp_secret = sanitized_env_totp
         else:
-            initial_totp_secret = _DEFAULT_TOTP_SECRET
+            initial_totp_secret = pyotp.random_base32()  # type: ignore[attr-defined]
 
         self._defaults = {
-            "email": default_username or os.getenv("DASHBOARD_USERNAME", _DEFAULT_EMAIL),
-            "password": default_password or os.getenv("DASHBOARD_PASSWORD", _DEFAULT_PASSWORD),
+            "email": username,
+            "password": password,
             "totp_secret": initial_totp_secret,
             "totp_enabled": _parse_env_bool(
                 os.getenv("DASHBOARD_TOTP_ENABLED"), default=True
@@ -225,6 +242,8 @@ class CredentialStore:
 
             if not raw:
                 raw = self._initial_payload()
+                if self._apply_env_overrides(raw):
+                    pass
                 self._write_locked(raw)
             else:
                 if self._apply_env_overrides(raw):
