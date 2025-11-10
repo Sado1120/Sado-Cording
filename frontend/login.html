@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Language" content="ko" />
+    <title>Sado Trade Bot · 로그인</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.css"
+      crossorigin="anonymous"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.__SADO_API_BASE__ = `${window.location.origin}/api`;
+    </script>
+    <script src="login.js" type="module" defer></script>
+  </head>
+  <body class="auth-body">
+    <main class="auth-screen" aria-labelledby="auth-title">
+      <section class="auth-hero">
+        <h1 class="auth-hero__brand">Sado Trade Bot</h1>
+        <p class="auth-hero__tagline">
+          업비트·ETF 듀얼 포트폴리오와 AI 오토파일럿을 결합한 자동매매 제어 센터에 접속하려면 먼저 로그인하세요.
+        </p>
+        <p class="auth-hero__version" id="auth-version" aria-live="polite">버전 정보를 불러오는 중…</p>
+      </section>
+      <section class="auth-panels">
+        <form class="auth-card auth-card--page" id="auth-login-form" autocomplete="off" novalidate>
+          <h2 class="auth-card__title" id="auth-title">대시보드 로그인</h2>
+          <p class="auth-card__subtitle">등록한 이메일과 비밀번호, (필요 시) Google Authenticator 코드를 입력하세요.</p>
+          <p class="auth-card__error" id="auth-error" role="alert" hidden></p>
+          <label class="auth-card__field" for="auth-email">
+            <span>이메일</span>
+            <input id="auth-email" name="email" type="email" autocomplete="username" placeholder="your@email.com" required />
+          </label>
+          <label class="auth-card__field" for="auth-password">
+            <span>비밀번호</span>
+            <input
+              id="auth-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="비밀번호를 입력하세요"
+              required
+            />
+          </label>
+          <label class="auth-card__field" data-auth-totp-field for="auth-totp">
+            <span id="auth-totp-label">Google Authenticator 코드 (선택)</span>
+            <input
+              id="auth-totp"
+              name="totp"
+              type="text"
+              inputmode="numeric"
+              pattern="\d{6,8}"
+              autocomplete="one-time-code"
+              placeholder="6자리 보안 코드"
+            />
+          </label>
+          <div class="auth-card__actions">
+            <button class="btn btn--primary auth-card__submit" type="submit">로그인</button>
+            <a class="btn btn--ghost" href="register.html">회원가입</a>
+          </div>
+          <p class="auth-card__hint" id="auth-footnote"></p>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>
