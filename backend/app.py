@@ -14,6 +14,7 @@ from time import perf_counter
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import ai, notifications, trading
@@ -223,7 +224,11 @@ async def enforce_authentication(request: Request, call_next):
         return await call_next(request)
 
     token = _extract_bearer_token(request)
-    ensure_authenticated(token)
+    try:
+        ensure_authenticated(token)
+    except HTTPException as exc:
+        headers = exc.headers or None
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=headers)
     return await call_next(request)
 
 
@@ -324,11 +329,12 @@ def register(payload: RegistrationRequest) -> RegistrationResponse:
 
 @app.post("/auth/register/resend", response_model=RegistrationResponse)
 def resend_registration_code() -> RegistrationResponse:
-    code, expires_at = resend_verification()
+    code, expires_at, pending_email = resend_verification()
     snapshot = auth_manager.snapshot()
     email_sent = False
-    if snapshot.email:
-        email_sent = send_verification_email(snapshot.email, code, expires_at)
+    target_email = pending_email or snapshot.email
+    if target_email:
+        email_sent = send_verification_email(target_email, code, expires_at)
     expose = _env_flag("AUTH_DEBUG_EXPOSE_CODES", True)
     message = (
         "새 인증 코드가 이메일로 발송되었습니다."
@@ -1189,6 +1195,10 @@ def _autopilot_status_payload(state: AutoTraderState) -> AutoPilotStatusResponse
 
 
 def _build_autopilot_config(payload: AutoPilotConfigRequest) -> AutoTraderConfig:
+    auto_select = payload.auto_select_market
+    if "auto_select_market" not in payload.__fields_set__ and payload.market:
+        auto_select = False
+
     return AutoTraderConfig(
         mode=payload.mode,
         market=payload.market.upper(),
@@ -1199,7 +1209,7 @@ def _build_autopilot_config(payload: AutoPilotConfigRequest) -> AutoTraderConfig
         include_portfolio=payload.include_portfolio,
         max_position_pct=payload.max_position_pct,
         min_confidence_pct=payload.min_confidence_pct,
-        auto_select_market=payload.auto_select_market,
+        auto_select_market=auto_select,
         recommendation_base=payload.recommendation_base.upper(),
         recommendation_interval=payload.recommendation_interval,
         recommendation_max_markets=payload.recommendation_max_markets,
@@ -2087,6 +2097,11 @@ def _compute_market_recommendations(
     max_markets = max(limit, min(max_markets, 120))
 
     fingerprint = _normalise_recent_markets(recent_markets)
+    dependency_salt = (
+        id(fetch_upbit_markets),
+        id(fetch_upbit_top_markets),
+        id(fetch_upbit_candles),
+    )
     cache_key = (
         base_currency,
         interval,
@@ -2094,6 +2109,7 @@ def _compute_market_recommendations(
         max_markets,
         bool(include_warnings),
         fingerprint[:_RECENT_HISTORY_CACHE_FINGERPRINT],
+        dependency_salt,
     )
     cached = _RECOMMENDATION_CACHE.get(cache_key)
     now_ts = time.time()

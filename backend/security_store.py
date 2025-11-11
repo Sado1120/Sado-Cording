@@ -87,10 +87,6 @@ except Exception:  # pragma: no cover - degrade gracefully when missing
     httpx = None  # type: ignore
 
 
-_DEFAULT_EMAIL = "sado0809@example.com"
-_DEFAULT_PASSWORD = "honges08!!"
-_DEFAULT_TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # HELLOWORLD base32 – replace in production
-
 _EMAIL_REGEX = re.compile(
     r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 )
@@ -191,14 +187,31 @@ class CredentialStore:
         elif env_totp_secret is not None:
             initial_totp_secret = env_totp_secret
         else:
-            initial_totp_secret = _DEFAULT_TOTP_SECRET
+            initial_totp_secret = pyotp.random_base32()
+
+        env_username = (default_username or os.getenv("DASHBOARD_USERNAME") or "").strip()
+        env_password = (default_password or os.getenv("DASHBOARD_PASSWORD") or "").strip()
+
+        if not env_username or not env_username.strip():
+            raise RuntimeError(
+                "Dashboard username is not configured. Set DASHBOARD_USERNAME before starting the service."
+            )
+
+        if not env_password or not env_password.strip():
+            raise RuntimeError(
+                "Dashboard password is not configured. Set DASHBOARD_PASSWORD before starting the service."
+            )
+
+        if env_totp_secret is not None:
+            sanitized_totp_secret = re.sub(r"\s+", "", env_totp_secret).upper()
+            initial_totp_secret = sanitized_totp_secret or initial_totp_secret
 
         self._defaults = {
-            "email": default_username or os.getenv("DASHBOARD_USERNAME", _DEFAULT_EMAIL),
-            "password": default_password or os.getenv("DASHBOARD_PASSWORD", _DEFAULT_PASSWORD),
+            "email": env_username,
+            "password": env_password,
             "totp_secret": initial_totp_secret,
             "totp_enabled": _parse_env_bool(
-                os.getenv("DASHBOARD_TOTP_ENABLED"), default=True
+                os.getenv("DASHBOARD_TOTP_ENABLED"), default=False
             ),
             "email_verified": _parse_env_bool(
                 os.getenv("DASHBOARD_EMAIL_VERIFIED"), default=True
@@ -540,34 +553,30 @@ class CredentialStore:
 
         salt = os.urandom(16)
         hashed_password = _hash_password(password, salt)
+        pending_totp_secret = pyotp.random_base32()
         verification_code = _generate_verification_code()
         expires_at = _now_ts() + _VERIFICATION_TTL_SECONDS
 
         with self._lock:
             self._ensure_loaded()
             assert self._data is not None
-            self._data["email"] = candidate_email
-            self._data["email_verified"] = False
-            self._data["password"] = {
-                "hash": hashed_password,
-                "salt": _encode_bytes(salt),
-                "updated_at": _now_ts(),
-            }
-            totp_entry = self._get_totp_entry()
-            if not totp_entry.get("secret"):
-                totp_entry["secret"] = pyotp.random_base32()
-            totp_entry["enabled"] = False
-            totp_entry["rotated_at"] = None
             verification_entry = self._get_verification_entry()
+            verification_entry.clear()
             verification_entry["code"] = verification_code
             verification_entry["created_at"] = _now_ts()
             verification_entry["expires_at"] = expires_at
             verification_entry["attempts"] = 0
+            verification_entry["pending_email"] = candidate_email
+            verification_entry["pending_password"] = {
+                "hash": hashed_password,
+                "salt": _encode_bytes(salt),
+            }
+            verification_entry["pending_totp_secret"] = pending_totp_secret
             self._write_locked(self._data)
 
         return verification_code, expires_at
 
-    def resend_verification(self) -> tuple[str, float]:
+    def resend_verification(self) -> tuple[str, float, str | None]:
         with self._lock:
             self._ensure_loaded()
             assert self._data is not None
@@ -576,8 +585,9 @@ class CredentialStore:
             verification_entry["created_at"] = _now_ts()
             verification_entry["expires_at"] = _now_ts() + _VERIFICATION_TTL_SECONDS
             verification_entry["attempts"] = 0
+            pending_email = verification_entry.get("pending_email")
             self._write_locked(self._data)
-            return verification_entry["code"], verification_entry["expires_at"]
+            return verification_entry["code"], verification_entry["expires_at"], pending_email
 
     def verify_email_code(self, code: str) -> tuple[bool, str, str, str]:
         candidate = code.strip()
@@ -599,7 +609,22 @@ class CredentialStore:
                 self._write_locked(self._data)
                 return False, "", "", ""
 
+            pending_email = verification_entry.pop("pending_email", None)
+            pending_password = verification_entry.pop("pending_password", None)
+            pending_totp_secret = verification_entry.pop("pending_totp_secret", None)
+
+            if pending_email:
+                self._data["email"] = pending_email
+            if isinstance(pending_password, dict):
+                self._data["password"] = {
+                    "hash": pending_password.get("hash", ""),
+                    "salt": pending_password.get("salt", ""),
+                    "updated_at": _now_ts(),
+                }
+
             totp_entry = self._get_totp_entry()
+            if pending_totp_secret:
+                totp_entry["secret"] = pending_totp_secret
             if not totp_entry.get("secret"):
                 totp_entry["secret"] = pyotp.random_base32()
             totp_entry["enabled"] = True

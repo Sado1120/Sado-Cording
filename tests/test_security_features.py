@@ -1,3 +1,4 @@
+import os
 import time
 from email.message import EmailMessage
 from types import SimpleNamespace
@@ -10,6 +11,11 @@ try:  # pragma: no cover - optional dependency in tests
     from fastapi.testclient import TestClient
 except Exception:  # pragma: no cover - fallback when FastAPI optional deps missing
     TestClient = None  # type: ignore[assignment]
+
+os.environ.setdefault("DASHBOARD_USERNAME", "sado0809@example.com")
+os.environ.setdefault("DASHBOARD_PASSWORD", "honges08!!")
+os.environ.setdefault("DASHBOARD_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+os.environ.setdefault("DASHBOARD_TOTP_ENABLED", "true")
 
 from backend import app as app_module
 from backend import email_utils

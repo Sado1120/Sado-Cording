@@ -23,12 +23,6 @@ class AuthSettings:
     admin_password_hash: str | None = None
 
 
-_DEFAULT_ADMIN_USERNAME = "sadovseva3454@gmail.com"
-_DEFAULT_ADMIN_PASSWORD_HASH = (
-    "AfcY+hkpgTBwwPGs5ZctuQ==$uHB2XQ5hEcPQvSFkwhuO421PH9S1TbudPJohqyQrAiE="
-)
-
-
 AUTH_COOKIE_NAME = "sado_access_token"
 
 
@@ -127,14 +121,16 @@ def load_auth_settings() -> AuthSettings:
     if admin_hash:
         admin_hash = admin_hash.strip()
 
-    if not admin_username:
-        admin_username = _DEFAULT_ADMIN_USERNAME
     if admin_hash:
         pass
     elif admin_plain:
         admin_hash = hash_admin_password(admin_plain.strip())
     else:
-        admin_hash = _DEFAULT_ADMIN_PASSWORD_HASH
+        admin_hash = None
+
+    if not admin_username or not admin_hash:
+        admin_username = None
+        admin_hash = None
 
     return AuthSettings(
         token_ttl=ttl,
@@ -176,7 +172,7 @@ def begin_registration(email: str, password: str) -> tuple[str, float]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-def resend_verification() -> tuple[str, float]:
+def resend_verification() -> tuple[str, float, str | None]:
     return auth_manager._store.resend_verification()
 
 
