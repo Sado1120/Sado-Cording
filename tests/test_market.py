@@ -1,0 +1,1050 @@
+from datetime import datetime, timedelta, timezone
+
+from backend.app import (
+    get_market_insights,
+    get_market_intelligence,
+    get_news,
+    get_upbit_candles,
+    optimize_portfolio,
+)
+from backend.market import (
+    MarketData,
+    MarketDataError,
+    MarketInfo,
+    MarketList,
+    TopMarketSelection,
+    attempt_upbit_self_heal,
+    build_market_insights,
+    fetch_authoritative_news,
+    fetch_upbit_candles,
+    fetch_upbit_markets,
+    fetch_upbit_top_markets,
+    get_upbit_recovery_log,
+    is_upbit_network_operational,
+    reset_market_state_for_tests,
+)
+from backend.schemas import (
+    MarketRecommendationPayload,
+    MarketRecommendationsResponse,
+    PortfolioOptimizationRequest,
+)
+from backend.trading import Candle, generate_synthetic_prices
+import backend.app as app_module
+
+
+def test_fetch_upbit_candles_fallback(monkeypatch):
+    import backend.market as market_module
+
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("network down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
+    monkeypatch.setattr(
+        market_module,
+        "_request_upbit_alt",
+        lambda *args, **kwargs: (_ for _ in ()).throw(market_module.MarketDataError("alt down")),
+    )
+    data = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert data.source == "synthetic"
+    assert len(data.candles) == 20
+    assert data.status == "down"
+    assert data.message
+    second = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert [c.close for c in data.candles] == [c.close for c in second.candles]
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_candles_alt_endpoint(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("primary down")
+
+    alt_payload = [
+        {
+            "candleDateTime": "2024-01-01T00:01:00+00:00",
+            "openingPrice": 105.0,
+            "highPrice": 112.0,
+            "lowPrice": 101.0,
+            "tradePrice": 108.0,
+            "candleAccTradeVolume": 9.0,
+        },
+        {
+            "candleDateTime": "2024-01-01T00:00:00+00:00",
+            "openingPrice": 100.0,
+            "highPrice": 110.0,
+            "lowPrice": 95.0,
+            "tradePrice": 105.0,
+            "candleAccTradeVolume": 12.0,
+        },
+    ]
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
+    monkeypatch.setattr(market_module, "_request_upbit_alt", lambda *args, **kwargs: alt_payload)
+
+    data = fetch_upbit_candles("KRW-ETH", interval="minute1", count=2)
+    assert data.source == "upbit_alt"
+    assert data.status == "warning"
+    assert len(data.candles) == 2
+    assert data.candles[-1].close == 108.0
+
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_top_markets_prefers_volume(monkeypatch):
+    import backend.market as market_module
+
+    infos = [
+        MarketInfo(
+            market="KRW-BTC",
+            korean_name="비트코인",
+            english_name="Bitcoin",
+            base_currency="KRW",
+            quote_currency="BTC",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ETH",
+            korean_name="이더리움",
+            english_name="Ethereum",
+            base_currency="KRW",
+            quote_currency="ETH",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-XRP",
+            korean_name="리플",
+            english_name="Ripple",
+            base_currency="KRW",
+            quote_currency="XRP",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+    ]
+
+    def fake_fetch_markets(*, only_krw: bool) -> MarketList:
+        return MarketList(markets=infos, source="upbit", status="up")
+
+    def fake_fetch_tickers(markets: list[str]):
+        assert set(markets) == {"KRW-BTC", "KRW-ETH", "KRW-XRP"}
+        return [
+            market_module.MarketTicker(
+                market="KRW-ETH",
+                trade_price=3000.0,
+                acc_trade_price_24h=5_000_000_000.0,
+                acc_trade_volume_24h=2000.0,
+                change_rate=1.2,
+                fetched_at=datetime.now(timezone.utc),
+            ),
+            market_module.MarketTicker(
+                market="KRW-BTC",
+                trade_price=40000000.0,
+                acc_trade_price_24h=12_000_000_000.0,
+                acc_trade_volume_24h=500.0,
+                change_rate=0.8,
+                fetched_at=datetime.now(timezone.utc),
+            ),
+        ]
+
+    monkeypatch.setattr(market_module, "fetch_upbit_markets", fake_fetch_markets)
+    monkeypatch.setattr(market_module, "fetch_upbit_tickers", fake_fetch_tickers)
+
+    selection = fetch_upbit_top_markets(base_currency="KRW", limit=2, include_warnings=False)
+    assert [info.market for info in selection.markets] == ["KRW-BTC", "KRW-ETH"]
+    assert selection.source == "upbit"
+    assert selection.errors == []
+
+
+def test_fetch_upbit_top_markets_fallback_on_error(monkeypatch):
+    import backend.market as market_module
+
+    infos = [
+        MarketInfo(
+            market="KRW-BTC",
+            korean_name="비트코인",
+            english_name="Bitcoin",
+            base_currency="KRW",
+            quote_currency="BTC",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ETH",
+            korean_name="이더리움",
+            english_name="Ethereum",
+            base_currency="KRW",
+            quote_currency="ETH",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+    ]
+
+    def fake_fetch_markets(*, only_krw: bool) -> MarketList:
+        return MarketList(markets=infos, source="upbit", status="up")
+
+    def fail_fetch_tickers(markets: list[str]):
+        raise market_module.MarketDataError("ticker failed")
+
+    monkeypatch.setattr(market_module, "fetch_upbit_markets", fake_fetch_markets)
+    monkeypatch.setattr(market_module, "fetch_upbit_tickers", fail_fetch_tickers)
+
+    selection = fetch_upbit_top_markets(base_currency="KRW", limit=2, include_warnings=False)
+    assert selection.source == "fallback-volume"
+    assert selection.errors
+    assert [info.market for info in selection.markets] == ["KRW-BTC", "KRW-ETH"]
+
+
+def test_is_upbit_network_operational_reflects_down_state(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+    assert is_upbit_network_operational() is True
+
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("network down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
+    monkeypatch.setattr(
+        market_module,
+        "_request_upbit_alt",
+        lambda *args, **kwargs: (_ for _ in ()).throw(market_module.MarketDataError("alt down")),
+    )
+
+    data = fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert data.source == "synthetic"
+    assert is_upbit_network_operational() is False
+
+    reset_market_state_for_tests()
+
+
+def test_httpx_client_reuse_and_reset():
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    first = market_module._get_httpx_client()
+    second = market_module._get_httpx_client()
+
+    if market_module.httpx is None:
+        assert first is None
+        assert second is None
+    else:
+        assert first is second
+
+    reset_market_state_for_tests()
+
+    if market_module.httpx is not None:
+        third = market_module._get_httpx_client()
+        assert third is not None
+        assert third is not first
+
+    reset_market_state_for_tests()
+
+
+def test_attempt_upbit_self_heal_skipped(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+    monkeypatch.setattr(market_module, "_UPBIT_ENABLE_NETWORK", False, raising=False)
+
+    result = attempt_upbit_self_heal("unit-test")
+    assert result["status"] == "skipped"
+    log = get_upbit_recovery_log(limit=1)
+    assert log and log[0]["action"] == "network-disabled"
+
+    reset_market_state_for_tests()
+
+
+def test_attempt_upbit_self_heal_success(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+    monkeypatch.setattr(market_module, "_UPBIT_ENABLE_NETWORK", True, raising=False)
+
+    call_counter = {"count": 0}
+
+    def fake_request(path, params=None, allow_self_heal=True):  # noqa: D401
+        call_counter["count"] += 1
+        assert allow_self_heal is False
+        return [{"market": "KRW-BTC"}]
+
+    monkeypatch.setattr(market_module, "_request_upbit", fake_request)
+
+    result = attempt_upbit_self_heal("unit-test")
+    assert result["status"] == "success"
+    assert call_counter["count"] == 1
+    entries = get_upbit_recovery_log(limit=5)
+    assert any(entry["action"] == "probe-market-directory" for entry in entries)
+
+    reset_market_state_for_tests()
+
+
+def test_attempt_upbit_self_heal_cooldown(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+    monkeypatch.setattr(market_module, "_UPBIT_ENABLE_NETWORK", True, raising=False)
+
+    clock = {"value": 0.0}
+
+    def fake_monotonic():
+        return clock["value"]
+
+    monkeypatch.setattr(market_module.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(
+        market_module,
+        "_request_upbit",
+        lambda *args, **kwargs: [{"market": "KRW-BTC"}],
+    )
+
+    clock["value"] = 100.0
+    first = attempt_upbit_self_heal("unit-test")
+    assert first["status"] == "success"
+
+    clock["value"] = 105.0
+    second = attempt_upbit_self_heal("unit-test")
+    assert second["status"] == "cooldown"
+
+    reset_market_state_for_tests()
+
+
+def test_upbit_request_throttle_respects_limits(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    monkeypatch.setattr(market_module, "_UPBIT_RATE_LIMIT_PER_SECOND", 2, raising=False)
+    monkeypatch.setattr(market_module, "_UPBIT_RATE_LIMIT_PER_MINUTE", 4, raising=False)
+
+    clock = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        return clock["value"]
+
+    def fake_sleep(duration: float) -> None:
+        clock["value"] += duration
+
+    monkeypatch.setattr(market_module.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(market_module.time, "sleep", fake_sleep)
+
+    for _ in range(4):
+        market_module._throttle_upbit_request()
+
+    assert len(market_module._recent_upbit_requests) == 4
+
+    before = clock["value"]
+    market_module._throttle_upbit_request()
+    after = clock["value"]
+
+    assert after > before
+    assert after >= 60.0
+
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_candles_uses_cached_live_data(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    payload = [
+        {
+            "candle_date_time_utc": (now + timedelta(minutes=index)).isoformat(),
+            "opening_price": 1_000_000 + index * 1_000,
+            "high_price": 1_001_000 + index * 1_000,
+            "low_price": 999_000 + index * 1_000,
+            "trade_price": 1_002_000 + index * 1_000,
+            "candle_acc_trade_volume": 10 + index,
+        }
+        for index in range(2)
+    ]
+
+    monkeypatch.setattr(market_module, "_request_upbit", lambda *_, **__: payload)
+    live = fetch_upbit_candles("KRW-BTC", interval="minute1", count=2)
+    assert live.source == "upbit"
+    assert not live.stale
+
+    def fail_request(*args, **kwargs):
+        raise market_module.MarketDataError("temporary failure")
+
+    monkeypatch.setattr(market_module, "_request_upbit", fail_request)
+    cached = fetch_upbit_candles("KRW-BTC", interval="minute1", count=2)
+    assert cached.source == "upbit_stale"
+    assert cached.stale is True
+    assert [c.close for c in cached.candles] == [c.close for c in live.candles]
+
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_candles_handles_rate_limit_with_cache(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    payload = [
+        {
+            "candle_date_time_utc": (now + timedelta(minutes=index)).isoformat(),
+            "opening_price": 1_000_000 + index * 1_000,
+            "high_price": 1_001_000 + index * 1_000,
+            "low_price": 999_000 + index * 1_000,
+            "trade_price": 1_002_000 + index * 1_000,
+            "candle_acc_trade_volume": 10 + index,
+        }
+        for index in range(3)
+    ]
+
+    monkeypatch.setattr(market_module, "_request_upbit", lambda *_, **__: payload)
+    live = fetch_upbit_candles("KRW-BTC", interval="minute1", count=3)
+    assert live.source == "upbit"
+
+    def raise_rate_limit(*args, **kwargs):
+        raise market_module.MarketRateLimitError("rate limit")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_rate_limit)
+    limited = fetch_upbit_candles("KRW-BTC", interval="minute1", count=3)
+    assert limited.source == "upbit_stale"
+    assert limited.status in {"warning", "unknown"}
+    assert any(c.close for c in limited.candles)
+
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_candles_rate_limit_without_cache(monkeypatch):
+    import backend.market as market_module
+
+    reset_market_state_for_tests()
+
+    def raise_rate_limit(*args, **kwargs):
+        raise market_module.MarketRateLimitError("rate limit")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_rate_limit)
+    data = fetch_upbit_candles("KRW-BTC", interval="minute1", count=3)
+    assert data.source == "synthetic"
+    assert data.status in {"warning", "unknown"}
+
+    reset_market_state_for_tests()
+
+
+def test_fetch_upbit_candles_offline_mode(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("UPBIT_ENABLE_NETWORK", "0")
+    module = importlib.reload(__import__("backend.market", fromlist=["*"]))
+    data = module.fetch_upbit_candles("KRW-BTC", interval="minute1", count=20)
+    assert data.source == "synthetic"
+    assert data.status == "down"
+
+    listing = module.fetch_upbit_markets()
+    assert listing.source == "fallback"
+    assert listing.status == "down"
+
+    # Restore module state for other tests
+    monkeypatch.delenv("UPBIT_ENABLE_NETWORK")
+    importlib.reload(__import__("backend.market", fromlist=["*"]))
+
+
+def test_upbit_base_url_normalises_trailing_slash(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("UPBIT_BASE_URL", "https://proxy.example.com/api/")
+    module = importlib.reload(__import__("backend.market", fromlist=["*"]))
+    assert module._UPBIT_API_BASE == "https://proxy.example.com/api"  # type: ignore[attr-defined]
+
+    monkeypatch.delenv("UPBIT_BASE_URL", raising=False)
+    importlib.reload(__import__("backend.market", fromlist=["*"]))
+
+
+def test_build_market_insights_from_synthetic():
+    candles = generate_synthetic_prices(days=60, seed=123)
+    insights = build_market_insights(candles, market="KRW-BTC", interval="minute1")
+    assert "ema_fast" in insights
+    assert "rsi" in insights
+    assert insights["market"] == "KRW-BTC"
+    assert insights["interval"] == "minute1"
+
+
+def test_fetch_upbit_markets_fallback(monkeypatch):
+    import backend.market as market_module
+
+    def raise_error(*args, **kwargs):
+        raise market_module.MarketDataError("down")
+
+    monkeypatch.setattr(market_module, "_request_upbit", raise_error)
+    listing = fetch_upbit_markets()
+    assert listing.source == "fallback"
+    assert listing.markets
+    assert len(listing.markets) >= 100
+    assert all(market.market.startswith("KRW-") for market in listing.markets)
+    assert listing.status == "down"
+    assert "내장" in listing.message
+
+
+def test_request_upbit_retries_before_failing(monkeypatch):
+    import backend.market as market_module
+
+    monkeypatch.setattr(market_module, "httpx", None)
+    monkeypatch.setattr(market_module, "_UPBIT_HTTP_ATTEMPTS", 3)
+    attempts = {"count": 0}
+
+    class DummyStream:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload
+
+        def __enter__(self):  # noqa: D401 - context manager protocol
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: D401 - context manager protocol
+            return False
+
+        def read(self) -> bytes:
+            return self._payload.encode("utf-8")
+
+    def fake_urlopen(request, timeout=None):  # noqa: ARG001
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise market_module.URLError("temporary failure")
+        return DummyStream('{"status": "ok"}')
+
+    monkeypatch.setattr(market_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(market_module.time, "sleep", lambda _s: None)
+
+    payload = market_module._request_upbit("/v1/status", None)  # type: ignore[attr-defined]
+    assert payload == {"status": "ok"}
+    assert attempts["count"] == 3
+
+
+def test_fetch_authoritative_news_fallback(monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise OSError("timeout")
+
+    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    monkeypatch.setattr(
+        "backend.market._news_state",
+        {"status": "unknown", "checked_at": 0.0, "cached_items": [], "cached_at": 0.0},
+    )
+    headlines = fetch_authoritative_news(limit=3)
+    assert len(headlines) == 3
+    assert all("title" in item for item in headlines)
+
+
+def test_fetch_authoritative_news_backoff(monkeypatch):
+    call_count = {"value": 0}
+
+    def raise_error(*args, **kwargs):
+        call_count["value"] += 1
+        raise OSError("timeout")
+
+    monkeypatch.setattr("backend.market.urlopen", raise_error)
+    monkeypatch.setattr(
+        "backend.market._news_state",
+        {"status": "unknown", "checked_at": 0.0, "cached_items": [], "cached_at": 0.0},
+    )
+
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic():
+        return monotonic_value["value"]
+
+    monkeypatch.setattr("backend.market.time.monotonic", fake_monotonic)
+
+    first = fetch_authoritative_news(limit=2)
+    first_calls = call_count["value"]
+    assert first
+
+    monotonic_value["value"] = 100.0  # Still within backoff window
+    second = fetch_authoritative_news(limit=2)
+
+    assert call_count["value"] == first_calls
+    assert second == first
+
+
+def test_market_endpoints(monkeypatch):
+    sample_candles = [
+        Candle(
+            timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            open=1_000_000,
+            high=1_010_000,
+            low=990_000,
+            close=1_005_000,
+            volume=12.5,
+        ),
+        Candle(
+            timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc),
+            open=1_005_000,
+            high=1_020_000,
+            low=995_000,
+            close=1_015_000,
+            volume=15.0,
+        ),
+    ]
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=sample_candles, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    candles_response = get_upbit_candles(market="KRW-BTC", interval="minute1")
+    assert candles_response.source == "synthetic"
+    assert len(candles_response.candles) == len(sample_candles)
+
+    insights_response = get_market_insights(market="KRW-BTC", interval="minute1")
+    assert insights_response.market == "KRW-BTC"
+    assert insights_response.rsi >= 0
+    assert insights_response.recommended_action
+
+    monkeypatch.setattr(
+        "backend.app.fetch_authoritative_news",
+        lambda limit=8: [
+            {
+                "title": "Sample",
+                "url": "https://example.com",
+                "source": "Example",
+                "published_at": "Now",
+            }
+        ],
+    )
+    news_response = get_news()
+    assert news_response.items
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(
+            markets=[
+                MarketInfo(
+                    market="KRW-BTC",
+                    korean_name="비트코인",
+                    english_name="Bitcoin",
+                    base_currency="KRW",
+                    quote_currency="BTC",
+                    market_warning="NONE",
+                    trading_suspended=False,
+                )
+            ],
+            source="upbit",
+        ),
+    )
+
+    markets_response = app_module.list_markets()
+    assert markets_response.source == "upbit"
+    assert markets_response.markets[0].market == "KRW-BTC"
+    assert markets_response.groups
+    group_keys = {group.key for group in markets_response.groups}
+    assert "krw" in group_keys
+    assert markets_response.status == "unknown"
+    assert markets_response.message == ""
+
+
+def test_market_recommendations_endpoint(monkeypatch):
+    markets = [
+        MarketInfo(
+            market="KRW-BTC",
+            korean_name="비트코인",
+            english_name="Bitcoin",
+            base_currency="KRW",
+            quote_currency="BTC",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ETH",
+            korean_name="이더리움",
+            english_name="Ethereum",
+            base_currency="KRW",
+            quote_currency="ETH",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ERR",
+            korean_name="에러코인",
+            english_name="ErrorCoin",
+            base_currency="KRW",
+            quote_currency="ERR",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(markets=markets, source="upbit"),
+    )
+
+    def fake_fetch(market: str, interval: str = "minute60", count: int = 200):
+        if market.endswith("ERR"):
+            raise MarketDataError("network error")
+        seed = sum(ord(char) for char in market)
+        candles = generate_synthetic_prices(days=200, seed=seed)
+        return MarketData(candles=candles, source="upbit_alt")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=3)
+
+    assert response.limit == 3
+    assert response.analysed_markets == 2
+    assert response.analysis_source == "mixed"
+    assert len(response.recommendations) == 3
+    assert any(item.market == "KRW-BTC" for item in response.recommendations)
+    assert any(item.market == "KRW-ETH" for item in response.recommendations)
+    assert any(item.source == "synthetic" for item in response.recommendations)
+    assert response.errors and any("KRW-ERR" in error for error in response.errors)
+    assert any("폴백" in item.summary for item in response.recommendations)
+    for item in response.recommendations:
+        assert item.technical_confluence_label, "추천 결과에 컨플루언스 라벨이 누락되었습니다."
+        assert item.technical_confluence_score >= 0
+        assert item.surge_probability_pct >= 0
+        assert item.crash_probability_pct >= 0
+        assert item.risk_reward_ratio >= 0
+
+
+def test_market_recommendations_internal_error(monkeypatch):
+    import backend.app as app_module
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_module, "_compute_market_recommendations", boom)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=4)
+
+    assert response.limit == 4
+    assert response.analysed_markets == 0
+    assert response.recommendations == []
+    assert response.analysis_source == "synthetic"
+    assert response.errors and "boom" in response.errors[0]
+
+
+def test_rank_recommendations_penalises_recent_markets():
+    import backend.app as app_module
+
+    def make_payload(symbol: str, *, score: float = 10.0, confidence: float = 60.0):
+        return MarketRecommendationPayload(
+            market=symbol,
+            korean_name=symbol,
+            english_name=symbol,
+            base_currency="KRW",
+            quote_currency=symbol.split("-")[-1],
+            score=score,
+            confidence_pct=confidence,
+            regime="상승",
+            recommended_action="매수",
+            last_price=1_000_000.0,
+            price_change_pct=1.0,
+            trend_strength_pct=50.0,
+            volatility_pct=30.0,
+            institutional_sentiment_pct=55.0,
+            breakout_probability_pct=35.0,
+            surge_probability_pct=20.0,
+            crash_probability_pct=5.0,
+            risk_reward_ratio=1.5,
+            technical_confluence_score=70.0,
+            technical_confluence_label="강세",
+            shock_risk_pct=4.0,
+            summary="테스트 추천",
+            reason="테스트",
+            source="upbit",
+        )
+
+    payloads = [
+        make_payload("KRW-BTC"),
+        make_payload("KRW-ETH"),
+        make_payload("KRW-ADA"),
+    ]
+
+    ordered = app_module._rank_recommendations(
+        payloads,
+        recent_markets=["KRW-BTC", "KRW-ETH"],
+    )
+
+    assert ordered[0].market == "KRW-ADA"
+    assert ordered[-1].market == "KRW-ETH"
+
+
+def test_market_recommendations_use_fallback_when_all_fail(monkeypatch):
+    markets = [
+        MarketInfo(
+            market="KRW-BTC",
+            korean_name="비트코인",
+            english_name="Bitcoin",
+            base_currency="KRW",
+            quote_currency="BTC",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+        MarketInfo(
+            market="KRW-ETH",
+            korean_name="이더리움",
+            english_name="Ethereum",
+            base_currency="KRW",
+            quote_currency="ETH",
+            market_warning="NONE",
+            trading_suspended=False,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(markets=markets, source="upbit"),
+    )
+
+    def failing_fetch(*args, **kwargs):
+        raise MarketDataError("blocked")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", failing_fetch)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=4)
+
+    assert response.limit == 4
+    assert response.analysed_markets == 0
+    assert len(response.recommendations) == 4
+    assert all(item.source == "synthetic" for item in response.recommendations)
+
+
+def test_recommendation_health_alerts(monkeypatch):
+    import backend.app as app_module
+
+    captured: list[tuple[str, str]] = []
+
+    def fake_notify(key: str, message: str, webhook_url=None):
+        captured.append((key, message))
+        return True
+
+    monkeypatch.setattr(
+        app_module.notifications,
+        "notify_synology_chat_on_change",
+        fake_notify,
+    )
+
+    alert_payload = MarketRecommendationsResponse(
+        generated_at=datetime.now(timezone.utc),
+        interval="minute60",
+        base_currency="KRW",
+        limit=5,
+        analysed_markets=0,
+        analysis_duration_ms=15.0,
+        analysis_source="synthetic",
+        recommendations=[],
+        errors=["실시간 추천이 비어 있습니다."],
+    )
+
+    app_module._notify_recommendation_health(alert_payload)
+
+    assert captured
+    key, message = captured[-1]
+    assert key == "market-recommendations-alert"
+    assert "경고" in message
+    assert "추천 결과 없음" in message
+
+    normal_payload = MarketRecommendationsResponse(
+        generated_at=datetime.now(timezone.utc),
+        interval="minute60",
+        base_currency="KRW",
+        limit=2,
+        analysed_markets=2,
+        analysis_duration_ms=8.0,
+        analysis_source="upbit",
+        recommendations=[
+            MarketRecommendationPayload(
+                market="KRW-ETH",
+                korean_name="이더리움",
+                english_name="Ethereum",
+                base_currency="KRW",
+                quote_currency="ETH",
+                score=1.2,
+                confidence_pct=72.5,
+                regime="bull",
+                recommended_action="매수",
+                last_price=3_500_000,
+                price_change_pct=1.5,
+                trend_strength_pct=60.0,
+                volatility_pct=25.0,
+                institutional_sentiment_pct=55.0,
+                breakout_probability_pct=38.0,
+                surge_probability_pct=33.0,
+                crash_probability_pct=8.0,
+                risk_reward_ratio=2.1,
+                technical_confluence_score=78.0,
+                technical_confluence_label="강세",
+                shock_risk_pct=5.0,
+                summary="기술 지표가 상승을 가리킵니다.",
+                reason="EMA 컨플루언스",
+                source="upbit",
+            ),
+            MarketRecommendationPayload(
+                market="KRW-XRP",
+                korean_name="리플",
+                english_name="Ripple",
+                base_currency="KRW",
+                quote_currency="XRP",
+                score=1.1,
+                confidence_pct=65.0,
+                regime="bull",
+                recommended_action="매수",
+                last_price=720,
+                price_change_pct=1.1,
+                trend_strength_pct=45.0,
+                volatility_pct=22.0,
+                institutional_sentiment_pct=48.0,
+                breakout_probability_pct=30.0,
+                surge_probability_pct=28.0,
+                crash_probability_pct=9.0,
+                risk_reward_ratio=1.8,
+                technical_confluence_score=72.0,
+                technical_confluence_label="균형",
+                shock_risk_pct=6.5,
+                summary="거래량이 증가하고 있습니다.",
+                reason="볼륨 가속",
+                source="upbit",
+            ),
+        ],
+        errors=[],
+    )
+
+    app_module._notify_recommendation_health(normal_payload)
+
+    assert len(captured) >= 2
+    _, recovery_message = captured[-1]
+    assert "정상화" in recovery_message
+
+
+def test_market_recommendations_trim_duplicate_markets(monkeypatch):
+    app_module._RECOMMENDATION_CACHE.clear()
+
+    btc = MarketInfo(
+        market="KRW-BTC",
+        korean_name="비트코인",
+        english_name="Bitcoin",
+        base_currency="KRW",
+        quote_currency="BTC",
+        market_warning="NONE",
+        trading_suspended=False,
+    )
+    eth = MarketInfo(
+        market="KRW-ETH",
+        korean_name="이더리움",
+        english_name="Ethereum",
+        base_currency="KRW",
+        quote_currency="ETH",
+        market_warning="NONE",
+        trading_suspended=False,
+    )
+    xrp = MarketInfo(
+        market="KRW-XRP",
+        korean_name="리플",
+        english_name="Ripple",
+        base_currency="KRW",
+        quote_currency="XRP",
+        market_warning="NONE",
+        trading_suspended=False,
+    )
+
+    base_markets = [btc, eth, xrp]
+    for index in range(40):
+        code = f"KRW-DUMMY{index}"
+        base_markets.append(
+            MarketInfo(
+                market=code,
+                korean_name=f"더미{index}",
+                english_name=f"Dummy{index}",
+                base_currency="KRW",
+                quote_currency="DUMMY",
+                market_warning="NONE",
+                trading_suspended=False,
+            )
+        )
+
+    monkeypatch.setattr(
+        "backend.app.fetch_upbit_markets",
+        lambda only_krw=True: MarketList(markets=base_markets, source="upbit"),
+    )
+
+    def fake_top_markets(*args, **kwargs):
+        return TopMarketSelection(
+            markets=[btc, btc, btc, eth, xrp],
+            source="upbit",
+            errors=[],
+        )
+
+    monkeypatch.setattr("backend.app.fetch_upbit_top_markets", fake_top_markets)
+
+    def fake_fetch(market: str, interval: str = "minute60", count: int = 200):
+        seed = sum(ord(ch) for ch in market) + len(interval)
+        candles = generate_synthetic_prices(days=200, seed=seed)
+        return MarketData(candles=candles, source="upbit")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    response = app_module.get_market_recommendations(base="KRW", interval="minute60", limit=3)
+
+    markets = {item.market for item in response.recommendations}
+    assert len(markets) == 3
+    assert markets == {"KRW-BTC", "KRW-ETH", "KRW-XRP"}
+    assert response.errors and any("중복" in message for message in response.errors)
+
+
+def test_ai_endpoints(monkeypatch):
+    synthetic = generate_synthetic_prices(days=200, seed=99)
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=synthetic, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+    monkeypatch.setattr(
+        "backend.app.fetch_authoritative_news",
+        lambda limit=5: [
+            {
+                "title": "Authoritative Insight",
+                "url": "https://example.com",
+                "source": "Example",
+                "published_at": "Just now",
+            }
+        ],
+    )
+
+    ai_response = get_market_intelligence(market="KRW-BTC", interval="minute60")
+    assert ai_response.recommended_action
+    assert ai_response.metrics.rsi >= 0
+    assert 0 <= ai_response.technical_confluence.score <= 100
+    assert ai_response.technical_confluence.label
+
+    request = PortfolioOptimizationRequest(risk_appetite=0.55, capital=15_000_000)
+    portfolio = optimize_portfolio(request)
+    assert portfolio.allocations
+    assert portfolio.expected_return_pct > 0
+
+
+def test_diagnostics_endpoint(monkeypatch):
+    synthetic = generate_synthetic_prices(days=120, seed=5)
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=synthetic, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    diagnostics = app_module._diagnostics_summary()
+    assert diagnostics.checks
+    names = {check.name for check in diagnostics.checks}
+    assert "업비트 연결" in names
+    assert diagnostics.upbit_guidance, "연결 경고 시 가이던스가 제공되어야 합니다"
+
+
+def test_ai_self_check_endpoint(monkeypatch):
+    synthetic = generate_synthetic_prices(days=90, seed=11)
+
+    def fake_fetch(*args, **kwargs):
+        return MarketData(candles=synthetic, source="synthetic")
+
+    monkeypatch.setattr("backend.app.fetch_upbit_candles", fake_fetch)
+
+    payload = app_module.get_ai_self_check(force=True)
+    assert payload.summary
+    assert payload.overall_severity in {"nominal", "warning", "critical"}
+    assert isinstance(payload.issues, list)
+    assert payload.issues, "Self-check should report at least one issue or info entry"
