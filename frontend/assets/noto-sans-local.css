@@ -1,0 +1,42 @@
+/*
+ * Local-first Noto Sans KR fallback.
+ * Uses installed system fonts to avoid external CDN fetch failures while keeping
+ * the same font-family name used across the dashboard.
+ */
+
+:root {
+  --font-primary: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Nanum Gothic',
+    'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Noto Sans KR'), local('Noto Sans CJK KR Regular'), local('NotoSansKR-Regular');
+}
+
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local('Noto Sans KR Medium'), local('NotoSansKR-Medium');
+}
+
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Noto Sans KR DemiLight'), local('NotoSansKR-DemiLight');
+}
+
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Noto Sans KR Bold'), local('NotoSansKR-Bold');
+}
