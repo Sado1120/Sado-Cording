@@ -3,25 +3,117 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ILJIN Copilot Control Center</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Language" content="ko" />
+    <title>Sado Trade Bot Control Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard.css"
+      crossorigin="anonymous"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.__SADO_API_BASE__ = `${window.location.origin}/api`;
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <script src="app.js" type="module" defer></script>
   </head>
-  <body>
+  <body id="top">
+    <nav class="global-nav" aria-label="주요 패널 바로가기">
+      <div class="global-nav__inner layout-shell">
+        <div class="global-nav__brand">
+          Sado Trade Bot
+          <span class="global-nav__version" id="app-version" aria-live="polite">버전 확인 중…</span>
+        </div>
+        <div class="global-nav__actions">
+          <button class="btn btn--ghost btn--compact" id="logout-btn" data-action="logout" type="button" disabled>
+            로그아웃
+          </button>
+        </div>
+        <button
+          class="global-nav__toggle"
+          id="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="global-nav-links"
+        >
+          <span class="global-nav__toggle-icon">☰</span>
+          <span class="global-nav__toggle-label">메뉴</span>
+        </button>
+        <ul class="global-nav__links" id="global-nav-links">
+          <li>
+            <a href="#panel-topline" title="요약 현황"><span aria-hidden="true">📊</span><span>요약</span></a>
+          </li>
+          <li>
+            <a href="#panel-system" title="운영 상태"><span aria-hidden="true">🛠️</span><span>운영</span></a>
+          </li>
+          <li>
+            <a href="#panel-markets" title="마켓 탐색"><span aria-hidden="true">🧭</span><span>마켓</span></a>
+          </li>
+          <li>
+            <a href="#panel-execution" title="실거래 &amp; 페이퍼 콘솔"><span aria-hidden="true">💼</span><span>트레이딩</span></a>
+          </li>
+          <li>
+            <a href="#panel-autopilot" title="오토파일럿"><span aria-hidden="true">🤖</span><span>오토파일럿</span></a>
+          </li>
+          <li>
+            <a href="#panel-copilot" title="AI 코파일럿"><span aria-hidden="true">🧠</span><span>코파일럿</span></a>
+          </li>
+          <li>
+            <a href="#panel-account" title="계정 보안"><span aria-hidden="true">🛡️</span><span>계정</span></a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <section class="mobile-quickbar layout-shell" id="mobile-quickbar" aria-label="모바일 요약">
+      <div class="mobile-quickbar__cards">
+        <article class="mobile-quickcard">
+          <span class="mobile-quickcard__label">총 투자금</span>
+          <strong id="mobile-initial-capital" class="mobile-quickcard__value">₩ 0</strong>
+        </article>
+        <article class="mobile-quickcard">
+          <span class="mobile-quickcard__label">가용 현금</span>
+          <strong id="mobile-available-cash" class="mobile-quickcard__value">₩ 0</strong>
+        </article>
+        <article class="mobile-quickcard">
+          <span class="mobile-quickcard__label">현재 잔고</span>
+          <strong id="mobile-ending-equity" class="mobile-quickcard__value">₩ 0</strong>
+        </article>
+        <article class="mobile-quickcard mobile-quickcard--accent">
+          <span class="mobile-quickcard__label">누적 손익</span>
+          <strong id="mobile-profit-krw" class="mobile-quickcard__value">₩ 0 (0.00%)</strong>
+        </article>
+        <article class="mobile-quickcard">
+          <span class="mobile-quickcard__label">총 수익률</span>
+          <strong id="mobile-total-return" class="mobile-quickcard__value">0.00%</strong>
+        </article>
+      </div>
+      <div class="mobile-quickbar__status">
+        <span class="mobile-quickbar__pill status-pill" id="mobile-paper-heartbeat" data-status="loading"
+          >페이퍼 동기화 확인 중</span
+        >
+        <span class="mobile-quickbar__pill status-pill" id="mobile-live-status" data-status="loading"
+          >실시간 시세 준비 중</span
+        >
+        <span class="mobile-quickbar__pill status-pill" id="mobile-autopilot-status" data-status="offline"
+          >오토파일럿 대기</span
+        >
+      </div>
+    </section>
+    <datalist id="market-options"></datalist>
     <header class="hero">
       <div class="hero__overlay"></div>
-      <div class="hero__content">
-        <h1>ILJIN Copilot</h1>
-        <p>
-          코인과 글로벌 ETF 포트폴리오를 한 번에 조율하는 차세대 자동매매 콘트롤 센터.
-          전략 연구부터 포트폴리오 리밸런싱까지, 데이터와 디자인으로 집중력을 높여보세요.
+      <div class="hero__content layout-shell">
+        <h1>Sado Trade Bot</h1>
+        <p class="hero__description">
+          업비트 실시간 시황과 글로벌 ETF 전략을 결합한 프로페셔널 자동매매 지휘 본부입니다.
+          실거래·가상 트레이딩, 시세 분석, 기관 뉴스 브리핑까지 Synology 8501 환경에 최적화했습니다.
         </p>
         <div class="hero__cta">
           <button id="simulate-btn" class="btn btn--primary">전략 시뮬레이션 실행</button>
@@ -30,35 +122,1110 @@
       </div>
     </header>
 
-    <main class="dashboard">
-      <section class="panel panel--metrics">
+    <main class="dashboard layout-shell">
+      <section class="panel panel--topline" id="panel-topline">
         <header>
-          <h2>핵심 지표</h2>
-          <span class="badge">실시간</span>
+          <h2>거래 성과 &amp; 추천 요약</h2>
+          <span class="panel-subtitle">핵심 수익률, 봇 상태, 추천 코인을 먼저 확인하세요</span>
         </header>
-        <div class="metric-grid">
-          <article class="metric-card">
-            <span class="metric-label">총 수익률</span>
-            <strong id="metric-total-return" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">전략 누적 성과</span>
+        <div class="topline-grid">
+          <div class="topline-column topline-column--performance">
+            <article class="topline-card">
+              <div class="topline-card__header">
+                <h3>수익률 현황</h3>
+                <span class="badge">실시간</span>
+              </div>
+              <div class="topline-balance">
+                <div class="topline-balance__item">
+                  <span class="topline-balance__label">총 투자금</span>
+                  <strong
+                    id="metric-initial-capital"
+                    class="topline-balance__value"
+                    data-sync-targets="mobile-initial-capital"
+                    >₩ 0</strong
+                  >
+                </div>
+                <div class="topline-balance__item">
+                  <span class="topline-balance__label">가용 현금</span>
+                  <strong
+                    id="metric-available-cash"
+                    class="topline-balance__value"
+                    data-sync-targets="mobile-available-cash"
+                    >₩ 0</strong
+                  >
+                </div>
+                <div class="topline-balance__item">
+                  <span class="topline-balance__label">현재 잔고</span>
+                  <strong
+                    id="metric-ending-equity"
+                    class="topline-balance__value"
+                    data-sync-targets="mobile-ending-equity"
+                    >₩ 0</strong
+                  >
+                </div>
+                <div class="topline-balance__item">
+                  <span class="topline-balance__label">누적 손익</span>
+                  <strong
+                    id="metric-profit-krw"
+                    class="topline-balance__value topline-balance__value--profit"
+                    data-sync-targets="mobile-profit-krw"
+                    >₩ 0 (0.00%)</strong
+                  >
+                </div>
+              </div>
+              <p id="metric-market-note" class="topline-source muted mobile-hidden">전략 마켓: -</p>
+              <p id="metric-price-source" class="topline-source muted mobile-hidden" data-source="">데이터 출처: -</p>
+              <div class="metric-grid metric-grid--topline">
+                <article class="metric-card">
+                  <span class="metric-label">총 수익률</span>
+                  <strong
+                    id="metric-total-return"
+                    class="metric-value"
+                    data-sync-targets="mobile-total-return"
+                    >0.00%</strong
+                  >
+                  <span class="metric-subtext">전략 누적 성과</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">연환산 수익률</span>
+                  <strong id="metric-annual-return" class="metric-value">0.00%</strong>
+                  <span class="metric-subtext">연간 기준</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">최대 낙폭</span>
+                  <strong id="metric-drawdown" class="metric-value">0.00%</strong>
+                  <span class="metric-subtext">리스크 헬스체크</span>
+                </article>
+                <article class="metric-card">
+                  <span class="metric-label">승률</span>
+                  <strong id="metric-trade-winrate" class="metric-value">승률 0.0%</strong>
+                  <span class="metric-subtext">체결 기반</span>
+                </article>
+              </div>
+              <div class="topline-status">
+                <div class="topline-status__item">
+                  <span class="topline-status__label">페이퍼 하트비트</span>
+                  <span id="topline-paper-heartbeat" class="status-pill" data-status="loading">확인 중</span>
+                  <small id="topline-paper-note" class="topline-status__note muted">-</small>
+                </div>
+                <div class="topline-status__item">
+                  <span class="topline-status__label">오토파일럿</span>
+                  <span id="topline-autopilot-status" class="status-pill" data-status="offline">대기</span>
+                  <button
+                    id="autopilot-start-top"
+                    class="btn btn--accent btn--compact topline-status__action"
+                    type="button"
+                  >
+                    상단에서 즉시 시작
+                  </button>
+                  <small id="topline-autopilot-note" class="topline-status__note muted">최근 실행 정보 없음</small>
+                  <small id="topline-autopilot-countdown" class="topline-status__countdown muted">예정 정보 없음</small>
+                </div>
+                <div class="topline-status__item">
+                  <span class="topline-status__label">대시보드 버전</span>
+                  <span id="topline-version" class="badge badge--accent" aria-live="polite">확인 중…</span>
+                </div>
+                <div class="topline-status__item topline-status__item--integrity">
+                  <span class="topline-status__label">데이터 무결성</span>
+                  <span id="metric-integrity-score" class="status-pill" data-status="loading">점검 중</span>
+                  <small id="metric-integrity-flags" class="topline-status__note muted">-</small>
+                </div>
+                <div class="topline-status__item">
+                  <span class="topline-status__label">실시간 시세</span>
+                  <span id="topline-live-status" class="status-pill" data-status="loading">동기화 중</span>
+                  <small id="topline-live-note" class="topline-status__note muted">마켓 준비 중</small>
+                </div>
+              </div>
+              <a class="topline-link" href="#analytics-panel">세부 리포트 보기</a>
+            </article>
+          </div>
+          <div class="topline-column topline-column--trades">
+            <article class="topline-card topline-card--trades">
+              <div class="topline-card__header">
+                <div class="topline-card__title">
+                  <h3>거래 내역</h3>
+                  <span class="panel-subtitle">실거래와 페이퍼 체결 로그를 통합 표시합니다.</span>
+                </div>
+                <button id="trade-history-refresh" class="btn btn--ghost btn--compact" type="button">
+                  새로고침
+                </button>
+              </div>
+              <p class="muted">
+                상단에서 최신 체결 결과를 확인하고, 페이퍼/실거래 상태 뱃지와 연동된 하트비트를 참조하세요.
+              </p>
+              <div class="table-wrapper table-wrapper--compact" data-collapsible="320">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>시간</th>
+                      <th>코인</th>
+                      <th>모드</th>
+                      <th>구분</th>
+                      <th>가격</th>
+                      <th>수량</th>
+                      <th>거래금액</th>
+                      <th>수수료</th>
+                      <th>실현손익</th>
+                      <th>비고</th>
+                    </tr>
+                  </thead>
+                  <tbody id="trade-table">
+                    <tr class="table-placeholder">
+                      <td colspan="10">최근 거래 기록이 없습니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="trade-cards" id="trade-cards" aria-live="polite" aria-label="모바일 거래 요약">
+                <p class="trade-cards__placeholder">최근 거래 기록이 없습니다.</p>
+              </div>
+            </article>
+          </div>
+          <div
+            class="topline-column topline-column--recommendations panel--recommendations"
+            id="recommendations-panel"
+          >
+            <article class="topline-card">
+              <div class="topline-card__header">
+                <h3>AI 추천 TOP5</h3>
+                <span class="panel-subtitle">실시간 시황을 분석해 우선 확인할 코인을 제안합니다.</span>
+              </div>
+              <div class="recommendations-toolbar">
+                <div class="recommendations-toolbar__meta">
+                  <span id="recommendations-filter" class="badge badge--ghost">필터 준비 중</span>
+                  <span id="recommendations-updated" class="muted">갱신 대기</span>
+                  <span id="recommendations-analysis" class="muted">분석 준비 중</span>
+                </div>
+                <div class="recommendations-toolbar__actions">
+                  <span id="recommendations-source" class="badge">데이터 확인 중</span>
+                  <button id="recommendations-refresh" class="btn btn--accent btn--compact" type="button">
+                    재스캔
+                  </button>
+                </div>
+              </div>
+              <ul id="recommendations-list" class="recommendations-list">
+                <li class="recommendation-card recommendation-card--placeholder">
+                  <strong>추천을 계산하는 중...</strong>
+                  <span>8501 대시보드가 업비트 전체 마켓을 분석한 뒤 TOP5를 표시합니다.</span>
+                </li>
+              </ul>
+              <div id="recommendations-errors" class="recommendations-errors"></div>
+              <div id="recommendations-notice" class="recommendations-notice" aria-live="polite"></div>
+              <div class="recommendations-footnote mobile-hidden" data-collapsible="220">
+                <h3>어떻게 선별하나요?</h3>
+                <p>
+                  AI 엔진이 EMA 추세, RSI/MACD, 변동성, 기관 센티먼트, 돌파 확률, 유동성 펄스를 함께 평가해
+                  점수화합니다. 매수 시나리오일수록 가중치를 높이고, 과도한 변동성은 자동으로 감점합니다.
+                </p>
+                <p class="muted">
+                  추천 결과는 실시간 시황, 페이퍼 계좌, 오토파일럿에 그대로 적용할 수 있으며, Synology Chat 알림과도
+                  연동됩니다.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--analytics" id="analytics-panel">
+        <header>
+          <h2>전략 성과 세부 리포트</h2>
+          <span class="panel-subtitle">거래 통계와 프로 리스크 지표를 분리해 한눈에 비교하세요</span>
+        </header>
+        <div class="analytics-summary" id="analytics-summary" data-mode="idle">
+          <div class="analytics-summary__row">
+            <strong id="analytics-summary-status" class="analytics-summary__status">성과 요약을 준비 중입니다</strong>
+            <span id="analytics-summary-source" class="badge badge--ghost">시세 출처 확인 필요</span>
+          </div>
+          <p id="analytics-summary-detail" class="analytics-summary__detail muted">
+            시뮬레이션이나 오토파일럿 거래가 누적되면 핵심 지표를 요약해 드립니다.
+          </p>
+          <p class="analytics-summary__meta muted">
+            마지막 업데이트 <span id="analytics-summary-updated">-</span>
+          </p>
+        </div>
+        <div class="analytics-grid">
+          <article class="analytics-card">
+            <h3>거래 통계</h3>
+            <p class="muted">시뮬레이션·오토파일럿 결과를 기반으로 체결 이력을 요약합니다.</p>
+            <ul class="trade-metrics">
+              <li>
+                <span>총 체결 수</span>
+                <strong id="metric-trade-count">0건</strong>
+              </li>
+              <li>
+                <span>평균 수익률</span>
+                <strong id="metric-trade-avg">평균 0.0%</strong>
+              </li>
+              <li>
+                <span>기대 수익률</span>
+                <strong id="metric-trade-expectancy">기대 0.0%</strong>
+              </li>
+              <li>
+                <span>중앙값 수익률</span>
+                <strong id="metric-trade-median">중앙값 0.0%</strong>
+              </li>
+              <li>
+                <span>승패 비율</span>
+                <strong id="metric-trade-winloss">승패비 0.00</strong>
+              </li>
+              <li>
+                <span>페이오프 비율</span>
+                <strong id="metric-trade-payoff">페이오프 0.00</strong>
+              </li>
+              <li>
+                <span>최대 수익</span>
+                <strong id="metric-trade-best">최대수익 0.0%</strong>
+              </li>
+              <li>
+                <span>최대 손실</span>
+                <strong id="metric-trade-worst">최대손실 0.0%</strong>
+              </li>
+            </ul>
           </article>
-          <article class="metric-card">
-            <span class="metric-label">연환산 수익률</span>
-            <strong id="metric-annual-return" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">연간 기준</span>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">최대 낙폭</span>
-            <strong id="metric-drawdown" class="metric-value">0.00%</strong>
-            <span class="metric-subtext">리스크 헬스체크</span>
-          </article>
-          <article class="metric-card">
-            <span class="metric-label">거래 요약</span>
-            <div class="metric-stack">
-              <span id="metric-trade-count">0건</span>
-              <span id="metric-trade-winrate">승률 0.0%</span>
-              <span id="metric-trade-avg">평균 0.0%</span>
+          <article class="analytics-card">
+            <h3>프로 리스크 지표</h3>
+            <p class="muted">변동성, tail risk, Kelly 등 자본 관리용 지표를 한데 모았습니다.</p>
+            <div class="metric-grid metric-grid--dense">
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">연간 변동성</span>
+                <strong id="metric-volatility" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">위험 대비 포지션 진폭</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">샤프 비율</span>
+                <strong id="metric-sharpe" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">위험 대비 수익</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">소르티노 비율</span>
+                <strong id="metric-sortino" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">하락 리스크만 고려</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">칼마 비율</span>
+                <strong id="metric-calmar" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">낙폭 대비 수익</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">95% VaR</span>
+                <strong id="metric-var" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">손실 한계 추정</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">노출 시간</span>
+                <strong id="metric-exposure" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">시장 체류 비중</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">프로핏 팩터</span>
+                <strong id="metric-profit-factor" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">이익/손실 비율</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">기대 수익률</span>
+                <strong id="metric-expectancy" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">거래당 기대값</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">평균 보유</span>
+                <strong id="metric-hold" class="metric-value metric-value--compact">0.0봉</strong>
+                <span class="metric-subtext">전략 체류 기간</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">울서 지수</span>
+                <strong id="metric-ulcer" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">심리적 낙폭 스트레스</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">다운사이드 변동성</span>
+                <strong id="metric-downside" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">하락 전용 표준편차</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">회복 계수</span>
+                <strong id="metric-recovery" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">수익률 대비 낙폭</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">평균 승률</span>
+                <strong id="metric-avg-win" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">이기는 거래 평균</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">평균 손실률</span>
+                <strong id="metric-avg-loss" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">지는 거래 평균</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">승패 비율</span>
+                <strong id="metric-winloss" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">리스크/리워드</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">테일 비율</span>
+                <strong id="metric-tail" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">꼬리 위험 대비 기회</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">오메가 비율</span>
+                <strong id="metric-omega" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">손실 대비 기회 비중</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">켈리 지수</span>
+                <strong id="metric-kelly" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">최적 베팅 비중 가이드</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">연속 승리</span>
+                <strong id="metric-streak-win" class="metric-value metric-value--compact">0회</strong>
+                <span class="metric-subtext">최대 우상향 스트릭</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">연속 손실</span>
+                <strong id="metric-streak-loss" class="metric-value metric-value--compact">0회</strong>
+                <span class="metric-subtext">최대 연속 하락 스트릭</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">왜도</span>
+                <strong id="metric-skewness" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">수익 분포 비대칭</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">첨도</span>
+                <strong id="metric-kurtosis" class="metric-value metric-value--compact">0.00</strong>
+                <span class="metric-subtext">꼬리 두께 집중도</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">평균 낙폭</span>
+                <strong id="metric-avg-drawdown" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">낙폭 평균 깊이</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">페인 인덱스</span>
+                <strong id="metric-pain" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">포트폴리오 고통 지수</span>
+              </article>
+              <article class="metric-card metric-card--compact">
+                <span class="metric-label">최대 상승폭</span>
+                <strong id="metric-runup" class="metric-value metric-value--compact">0.00%</strong>
+                <span class="metric-subtext">트로프 대비 최고 반등</span>
+              </article>
             </div>
+          </article>
+        </div>
+      </section>
+      <section class="panel panel--system" id="panel-system">
+        <header>
+          <h2>운영 상태 모니터</h2>
+          <span class="panel-subtitle">Synology 컨테이너 8501 포트 전용 엔드포인트 제어</span>
+        </header>
+        <div class="system-grid">
+          <article class="system-card">
+            <span class="metric-label">API 엔드포인트</span>
+            <div class="api-config">
+              <input id="api-endpoint" type="text" placeholder="http://127.0.0.1:8000" />
+              <button id="api-refresh" class="btn btn--ghost btn--compact" type="button">상태 확인</button>
+            </div>
+            <span id="api-status" class="status-pill" data-status="loading">확인 필요</span>
+          </article>
+          <article class="system-card system-card--description">
+            <h3>대시보드 포트 8501 운영 가이드</h3>
+            <p>Synology Chat 웹훅도 아래 카드에서 즉시 점검할 수 있습니다.</p>
+            <p>
+              Synology 컨테이너 매니저에서는 이 대시보드를 <code>8501</code> 포트에 매핑하고,
+              FastAPI 백엔드는 <code>8000</code> 포트에서 기동하세요. 좌측 카드에서 연결 상태를 실시간으로 검증합니다.
+            </p>
+            <p>
+              설비 고장 Copilot UI 스타일을 그대로 적용해 공장 설비와 자동매매 현황을 한 화면에서 모니터링할 수 있도록 디자인했습니다.
+            </p>
+          </article>
+          <article class="system-card system-card--chat">
+            <h3>Synology Chat 웹훅 테스트</h3>
+            <p>자동매매 알림이 잘 전달되는지 확인하려면 메시지를 입력하고 테스트를 전송하세요.</p>
+            <div class="chat-test">
+              <input id="chat-test-message" type="text" placeholder="예: 테스트 알림 - 연결 확인" />
+              <button id="chat-test-btn" class="btn btn--ghost btn--compact" type="button">테스트 전송</button>
+            </div>
+            <span id="chat-test-status" class="status-pill" data-status="idle">대기</span>
+            <p id="chat-status-host" class="chat-status muted">웹훅 호스트 정보를 확인하는 중입니다.</p>
+            <p id="chat-status-detail" class="chat-status muted">최근 웹훅 점검 이력이 없습니다.</p>
+          </article>
+          <article class="system-card system-card--diagnostics">
+            <div class="diagnostics-header">
+              <h3>프로 진단</h3>
+              <button id="diagnostics-refresh" class="btn btn--ghost btn--compact" type="button">재실행</button>
+            </div>
+            <ul id="diagnostics-list" class="diagnostics-list">
+              <li class="diagnostics-placeholder">진단을 시작하려면 재실행을 눌러주세요.</li>
+            </ul>
+          </article>
+          <article class="system-card system-card--selfcheck">
+            <div class="selfcheck-header">
+              <h3>AI 자가 진단</h3>
+              <button id="selfcheck-refresh" class="btn btn--ghost btn--compact" type="button">업데이트</button>
+            </div>
+            <p id="selfcheck-summary" class="selfcheck-summary" data-severity="pending">AI 자가 진단 대기 중...</p>
+            <ul id="selfcheck-issues" class="selfcheck-issues">
+              <li class="selfcheck-placeholder">자가 진단을 실행하면 결과가 여기에 표시됩니다.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--markets" id="panel-markets">
+        <header>
+          <h2>업비트 마켓 탐색기</h2>
+          <span class="panel-subtitle">코인을 검색하고 즉시 시뮬레이션·페이퍼·오토파일럿에 적용하세요</span>
+          <div class="panel-status" id="market-directory-status">
+            <span class="status-pill" data-status="loading">불러오는 중</span>
+            <small id="market-directory-note" class="panel-status__note muted">업비트 마켓 정보를 불러오는 중입니다.</small>
+          </div>
+        </header>
+        <div class="market-explorer">
+          <div class="market-explorer__controls">
+            <label class="control-field">
+              <span>마켓 검색</span>
+              <input id="market-search" type="search" placeholder="예: BTC, 솔라나, ETF" />
+            </label>
+            <div class="market-explorer__chips" role="group" aria-label="기준 통화 필터">
+              <button class="chip chip--active" type="button" data-market-base="KRW">KRW</button>
+              <button class="chip" type="button" data-market-base="USDT">USDT</button>
+              <button class="chip" type="button" data-market-base="BTC">BTC</button>
+              <button class="chip" type="button" data-market-base="ALL">전체</button>
+            </div>
+            <div id="market-groups" class="market-explorer__groups"></div>
+          </div>
+          <ul id="market-results" class="market-explorer__results">
+            <li class="market-result market-result--placeholder">
+              <strong>마켓 디렉터리를 불러오는 중...</strong>
+              <span>업비트 연결이 어려울 경우에도 기본 대표 종목을 제공합니다.</span>
+            </li>
+          </ul>
+          <button
+            id="market-results-toggle"
+            class="btn btn--ghost btn--compact market-explorer__toggle"
+            type="button"
+          >
+            자세히 보기
+          </button>
+        </div>
+      </section>
+
+      <section class="panel panel--live">
+        <header>
+          <h2>실시간 업비트 시황</h2>
+          <span class="panel-subtitle">차트·지표·기관 뉴스로 시장을 즉시 파악하세요</span>
+        </header>
+        <div class="live-grid">
+          <div class="live-controls">
+            <div class="live-form">
+              <label class="control-field">
+                <span>마켓</span>
+                <input
+                  id="live-market"
+                  type="text"
+                  list="market-options"
+                  placeholder="예: KRW-BTC"
+                  data-default-value="KRW-BTC"
+                />
+              </label>
+              <label class="control-field">
+                <span>주기</span>
+                <select id="live-interval">
+                  <option value="minute1">1분</option>
+                  <option value="minute5">5분</option>
+                  <option value="minute15">15분</option>
+                  <option value="minute60">60분</option>
+                  <option value="day">일간</option>
+                </select>
+              </label>
+              <button id="live-refresh" class="btn btn--accent" type="button">시황 새로고침</button>
+              <span id="live-source" class="muted">데이터 준비 중</span>
+            </div>
+            <div class="insight-cards">
+              <article class="insight-card">
+                <h3>EMA 크로스</h3>
+                <dl>
+                  <div><dt>Fast EMA</dt><dd id="live-ema-fast">-</dd></div>
+                  <div><dt>Slow EMA</dt><dd id="live-ema-slow">-</dd></div>
+                  <div><dt>신호</dt><dd id="live-ema-signal">-</dd></div>
+                </dl>
+              </article>
+              <article class="insight-card">
+                <h3>오실레이터</h3>
+                <dl>
+                  <div><dt>RSI</dt><dd id="live-rsi">-</dd></div>
+                  <div><dt>MACD</dt><dd id="live-macd">-</dd></div>
+                  <div><dt>히스토그램</dt><dd id="live-macd-hist">-</dd></div>
+                </dl>
+              </article>
+              <article class="insight-card">
+                <h3>리스크 브리핑</h3>
+                <dl>
+                  <div><dt>연환산 변동성</dt><dd id="live-volatility">-</dd></div>
+                  <div><dt>추세 강도</dt><dd id="live-trend">-</dd></div>
+                  <div><dt>권장 액션</dt><dd id="live-action">-</dd></div>
+                </dl>
+              </article>
+            </div>
+          </div>
+          <div class="live-visuals">
+            <canvas id="live-chart" height="220"></canvas>
+            <div class="live-meta">
+              <span id="live-regime" class="badge">-</span>
+              <span id="live-confidence" class="badge badge--ghost">신뢰도 -%</span>
+              <span id="live-updated" class="muted">업데이트 대기</span>
+            </div>
+            <pre id="live-summary" class="live-summary">시장 요약이 여기에 표시됩니다.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--ai">
+        <header>
+          <h2>AI 시황 인텔리전스 & 자율 리스크 컨트롤</h2>
+          <span class="panel-subtitle">Sado Trade Bot이 실시간으로 시장을 해석하고 대응 전략을 제안합니다</span>
+        </header>
+        <div class="ai-grid">
+          <article class="ai-intel">
+            <div class="ai-intel__header">
+              <h3>AI 추천 전략</h3>
+              <button id="ai-refresh" class="btn btn--ghost btn--compact" type="button">AI 인텔리전스 새로고침</button>
+            </div>
+            <div class="ai-intel__stats">
+              <div>
+                <span>추천 액션</span>
+                <strong id="ai-action">데이터 대기</strong>
+              </div>
+              <div>
+                <span>신뢰도</span>
+                <strong id="ai-confidence">-</strong>
+              </div>
+              <div>
+                <span>시장 레짐</span>
+                <strong id="ai-regime">-</strong>
+              </div>
+            </div>
+            <p id="ai-summary" class="ai-intel__summary" data-collapsible="200">
+              AI 분석 요약이 여기에 표시됩니다.
+            </p>
+            <p id="ai-institutional" class="ai-intel__institutional">기관 뉴스 센티먼트와 유동성 메모가 노출됩니다.</p>
+            <div class="ai-confluence">
+              <h4>기술적 컨플루언스</h4>
+              <div class="ai-confluence__score" id="ai-confluence-score">점수 대기</div>
+              <p id="ai-confluence-label" class="ai-confluence__label">패턴·거래량 정보가 준비됩니다.</p>
+              <ul id="ai-confluence-drivers" class="ai-confluence__drivers" data-collapsible="200"></ul>
+            </div>
+            <ul id="ai-signals" class="ai-signals">
+              <li>AI 지표 샘플이 여기에 표시됩니다.</li>
+            </ul>
+            <div class="ai-risk">
+              <h4>리스크 컨트롤</h4>
+              <dl>
+                <div><dt>손절 제안</dt><dd id="ai-stop">-</dd></div>
+                <div><dt>목표 수익</dt><dd id="ai-take">-</dd></div>
+                <div><dt>트레일링</dt><dd id="ai-trailing">-</dd></div>
+                <div><dt>포지션 규모</dt><dd id="ai-size">-</dd></div>
+              </dl>
+              <p id="ai-risk-note" class="ai-risk__note">AI가 리스크 관리 코멘트를 여기에 표기합니다.</p>
+              <ul id="ai-risk-notes" class="ai-risk__list" data-collapsible="220"></ul>
+            </div>
+            <div class="ai-consensus">
+              <h4>다중 타임프레임 합의</h4>
+              <div class="ai-consensus__headline">
+                <span id="ai-consensus-dominant" class="badge badge--ghost">-</span>
+                <span id="ai-consensus-agreement" class="muted">일치율 0%</span>
+              </div>
+              <ul id="ai-consensus-details" class="ai-consensus__details">
+                <li>컨센서스 데이터가 준비 중입니다.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="ai-news">
+            <h3>기관 뉴스 & 브리핑</h3>
+            <ul id="ai-news" class="ai-news__list">
+              <li class="ai-news__placeholder">AI가 권위 있는 기관 뉴스를 모니터링합니다.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel--execution" id="autopilot-panel">
+        <header>
+          <h2>실거래 & 페이퍼 트레이딩 콘솔</h2>
+          <span class="panel-subtitle">업비트 실거래 주문과 가상 계좌 백테스트를 한 화면에서 제어</span>
+        </header>
+        <div class="execution-grid">
+          <form id="order-form" class="execution-form">
+            <div class="mode-toggle">
+              <label class="mode-option">
+                <input type="radio" name="order-mode" value="paper" checked />
+                <span data-icon="🧪">페이퍼 트레이딩</span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="order-mode" value="live" />
+                <span data-icon="⚡">실거래 (Upbit)</span>
+              </label>
+            </div>
+            <div class="execution-fields">
+              <label class="control-field">
+                <span>마켓 (예: KRW-BTC)</span>
+                <input
+                  type="text"
+                  name="market"
+                  list="market-options"
+                  placeholder="예: KRW-BTC"
+                  data-default-value="KRW-BTC"
+                />
+              </label>
+              <label class="control-field">
+                <span>매매 방향</span>
+                <select name="side">
+                  <option value="bid">매수 (Bid)</option>
+                  <option value="ask">매도 (Ask)</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>주문 유형</span>
+                <select name="ord_type">
+                  <option value="limit">지정가 (limit)</option>
+                  <option value="market">시장가 (market)</option>
+                  <option value="price">금액지정 (price)</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>가격</span>
+                <input type="number" name="price" step="0.0001" min="0" placeholder="시장가 주문 시 생략" />
+              </label>
+              <label class="control-field">
+                <span>수량</span>
+                <input type="number" name="volume" step="0.0001" min="0.0001" value="0.01" required />
+              </label>
+            </div>
+            <button class="btn btn--primary" type="submit">주문 실행</button>
+            <p class="form-helper">실거래 모드는 환경 변수의 Upbit API 키가 올바르게 설정된 경우에만 동작합니다.</p>
+          </form>
+
+          <div class="execution-insights">
+            <article class="status-card">
+              <h3>실행 결과</h3>
+              <pre id="order-result">주문을 실행하면 응답이 여기에 표시됩니다.</pre>
+            </article>
+            <article class="status-card">
+              <div class="status-card__header">
+                <h3>페이퍼 계좌 현황</h3>
+                <div class="status-actions">
+                  <span id="paper-heartbeat" class="status-pill" data-status="loading">연동 확인 중</span>
+                  <button id="paper-refresh-btn" class="btn btn--ghost btn--compact" type="button">새로고침</button>
+                </div>
+                <p id="paper-price-source" class="status-note muted">데이터 출처 확인 중</p>
+              </div>
+              <form id="paper-status-form" class="inline-form">
+                <label>
+                  모니터링 마켓
+                  <input
+                    id="paper-status-market"
+                    type="text"
+                    list="market-options"
+                    placeholder="예: KRW-BTC"
+                    data-default-value="KRW-BTC"
+                  />
+                </label>
+                <label>
+                  캔들 간격
+                  <select id="paper-status-interval">
+                    <option value="minute1">1분</option>
+                    <option value="minute5">5분</option>
+                    <option value="minute15">15분</option>
+                    <option value="minute60">60분</option>
+                    <option value="day">일간</option>
+                  </select>
+                </label>
+                <button id="paper-status-apply" class="btn btn--ghost btn--compact" type="button">즉시 업데이트</button>
+              </form>
+              <form id="paper-reset-form" class="inline-form">
+                <label>
+                  초기 자본 (KRW)
+                  <input id="paper-initial-cash" type="number" value="20000000" min="1000000" step="100000" />
+                </label>
+                <button class="btn btn--accent btn--compact" type="submit">계좌 리셋</button>
+              </form>
+              <button id="paper-hard-reset-btn" class="btn btn--danger btn--compact" type="button">전체 초기화</button>
+              <form id="paper-mark-form" class="inline-form">
+                <label>
+                  마켓
+                  <input id="paper-mark-market" type="text" placeholder="KRW-BTC" list="market-options" />
+                </label>
+                <label>
+                  시세 (KRW)
+                  <input id="paper-mark-price" type="number" step="0.0001" min="0" placeholder="31000000" />
+                </label>
+                <button class="btn btn--ghost btn--compact" type="submit">시세 반영</button>
+              </form>
+              <div id="paper-summary" class="paper-summary">계좌 리셋 또는 주문 실행 후 요약이 표시됩니다.</div>
+            </article>
+            <article class="status-card">
+              <h3>실거래 잔고 (Upbit)</h3>
+              <button id="live-balance-btn" class="btn btn--ghost btn--compact" type="button">잔고 조회</button>
+              <pre id="live-balance-output">API 키 설정 후 잔고를 조회하세요.</pre>
+            </article>
+          </div>
+          <div id="paper-reset-dialog" class="modal" role="dialog" aria-modal="true" aria-labelledby="paper-reset-title" hidden>
+            <div class="modal__content">
+              <h4 id="paper-reset-title">페이퍼 계좌 전체 초기화</h4>
+              <p>
+                현재 페이퍼 계좌를 초기 자본으로 완전히 되돌립니다. 모든 포지션과 주문 기록이 삭제됩니다.
+                계속하시겠습니까?
+              </p>
+              <div class="modal__actions">
+                <button id="paper-reset-confirm" class="btn btn--danger" type="button">예, 초기화</button>
+                <button id="paper-reset-cancel" class="btn btn--ghost" type="button">아니요</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--autopilot" id="panel-autopilot">
+        <header>
+          <h2>AI 오토파일럿 제어</h2>
+          <span class="panel-subtitle">실시간 자동매매 상태와 실행 로그 모니터링</span>
+        </header>
+        <div class="autopilot-grid">
+          <form id="autopilot-form" class="autopilot-form">
+            <div class="autopilot-form__grid">
+              <label class="control-field">
+                <span>모드</span>
+                <select id="autopilot-mode" name="mode">
+                  <option value="paper" selected>페이퍼</option>
+                  <option value="live">실거래</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>마켓</span>
+                <input
+                  id="autopilot-market"
+                  type="text"
+                  list="market-options"
+                  placeholder="자동 선택 (원하면 수동 입력)"
+                />
+              </label>
+              <label class="control-field">
+                <span>캔들 주기</span>
+                <select id="autopilot-interval">
+                  <option value="minute1">1분</option>
+                  <option value="minute5">5분</option>
+                  <option value="minute15">15분</option>
+                  <option value="minute60" selected>60분</option>
+                  <option value="day">일봉</option>
+                </select>
+              </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-auto-market" type="checkbox" checked />
+                <span>AI 추천 상위 종목 자동 선택</span>
+              </label>
+              <label class="control-field">
+                <span>추천 기준 통화</span>
+                <select id="autopilot-base">
+                  <option value="KRW" selected>KRW 마켓</option>
+                  <option value="USDT">USDT 마켓</option>
+                  <option value="BTC">BTC 마켓</option>
+                  <option value="ALL">전체 마켓</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>추천 주기</span>
+                <select id="autopilot-recommendation-interval">
+                  <option value="minute15">15분</option>
+                  <option value="minute60" selected>60분</option>
+                  <option value="minute240">4시간</option>
+                  <option value="day">일봉</option>
+                </select>
+              </label>
+              <label class="control-field">
+                <span>분석 대상 수 (최대)</span>
+                <input id="autopilot-max-markets" type="number" value="180" min="10" max="200" step="5" />
+              </label>
+              <label class="control-field">
+                <span>리스크 성향</span>
+                <input id="autopilot-risk" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <small id="autopilot-risk-label">균형형 (60.00%)</small>
+              </label>
+              <label class="control-field">
+                <span>운용 자본 (KRW)</span>
+                <input id="autopilot-capital" type="number" value="20000000" min="1000000" step="500000" />
+              </label>
+              <label class="control-field">
+                <span>평가 주기 (초)</span>
+                <input id="autopilot-poll" type="number" value="120" min="15" max="900" step="15" />
+              </label>
+              <label class="control-field">
+                <span>최대 포지션 (자본비율)</span>
+                <input id="autopilot-max-position" type="number" value="0.25" min="0.05" max="1" step="0.05" />
+              </label>
+              <label class="control-field">
+                <span>최소 신뢰도 (%)</span>
+                <input id="autopilot-confidence" type="number" value="50" min="40" max="95" step="1" />
+              </label>
+              <label class="control-field">
+                <span>사이클당 최대 거래 수</span>
+                <input id="autopilot-max-trades" type="number" value="1" min="1" max="5" step="1" />
+              </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-include-portfolio" type="checkbox" checked />
+                <span>포트폴리오 재조정 참고</span>
+              </label>
+              <label class="control-field autopilot-toggle">
+                <input id="autopilot-include-warnings" type="checkbox" />
+                <span>주의 종목 포함</span>
+              </label>
+            </div>
+            <div class="autopilot-form__actions">
+              <button id="autopilot-start" class="btn btn--primary" type="submit">오토파일럿 시작</button>
+              <button id="autopilot-stop" class="btn btn--ghost" type="button">중지</button>
+            </div>
+            <p class="form-helper">실거래 모드는 Synology 환경변수에 업비트 API 키가 설정되어 있어야 자동 주문이 발동합니다.</p>
+          </form>
+
+          <div class="autopilot-status">
+            <div class="autopilot-status__headline">
+              <span id="autopilot-state" class="status-pill" data-status="offline">대기</span>
+              <div>
+                <span class="autopilot-label">최근 시작</span>
+                <strong id="autopilot-last-run">-</strong>
+              </div>
+              <div>
+                <span class="autopilot-label">최근 완료</span>
+                <strong id="autopilot-last-completed">-</strong>
+              </div>
+              <div>
+                <span class="autopilot-label">다음 실행</span>
+                <strong id="autopilot-next-countdown" class="muted">예정 정보 없음</strong>
+              </div>
+            </div>
+            <div class="autopilot-status__network">
+              <span id="autopilot-network-pill" class="status-pill" data-status="loading">확인 중</span>
+              <p id="autopilot-network" class="autopilot-note muted">
+                업비트 연결 상태를 점검하는 중입니다.
+              </p>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>최근 자동 주문</h3>
+              <p id="autopilot-last-trade" class="autopilot-last-trade">실행 내역이 없습니다.</p>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>오토파일럿 로그</h3>
+              <ul id="autopilot-log" class="autopilot-log" data-collapsible="220">
+                <li class="autopilot-log__placeholder">로그가 준비 중입니다.</li>
+              </ul>
+            </div>
+            <div class="autopilot-status__section">
+              <h3>AI 추천 종목</h3>
+              <p id="autopilot-recommendation-source" class="autopilot-note muted">분석 출처: -</p>
+              <p id="autopilot-candidates" class="autopilot-note muted">분석 후보: -</p>
+              <p id="autopilot-analysis" class="autopilot-note muted">이번 사이클 분석: -</p>
+              <ul
+                id="autopilot-recommendations"
+                class="autopilot-log autopilot-log--compact"
+                data-collapsible="220"
+              >
+                <li class="autopilot-log__placeholder">추천 정보가 없습니다.</li>
+              </ul>
+            </div>
+            <p id="autopilot-last-error" class="autopilot-error"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--copilot" id="panel-copilot">
+        <header>
+          <h2>AI 코파일럿 실시간 자문</h2>
+          <span class="panel-subtitle">질문형 상담과 자동 매매 플랜을 동시에 확인</span>
+        </header>
+        <div class="copilot-grid">
+          <form id="copilot-form" class="copilot-form">
+            <label class="control-field">
+              <span>코파일럿에게 묻기</span>
+              <textarea
+                id="copilot-question"
+                placeholder="예: 지금 KRW-BTC 추가 매수해도 될까요?"
+                rows="3"
+              ></textarea>
+            </label>
+            <div class="copilot-controls">
+              <label class="control-field">
+                <span>리스크 성향</span>
+                <input id="copilot-risk" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <small id="copilot-risk-label">균형형 (0.60)</small>
+              </label>
+              <label class="control-field">
+                <span>투자 자본 (KRW)</span>
+                <input id="copilot-capital" type="number" value="20000000" step="100000" min="1000000" />
+              </label>
+            </div>
+            <div class="copilot-switches">
+              <label class="control-field copilot-toggle">
+                <input id="copilot-include-portfolio" type="checkbox" checked />
+                <span>AI 포트폴리오 추천 포함</span>
+              </label>
+              <label class="control-field copilot-toggle">
+                <input id="assistant-chat-toggle" type="checkbox" checked />
+                <span>어시스턴트 요약을 Synology Chat으로 전송</span>
+              </label>
+            </div>
+            <div class="copilot-actions">
+              <button id="assistant-run" class="btn btn--accent" type="button">AI 어시스턴트 분석</button>
+              <button class="btn btn--primary" type="submit">AI 코파일럿 실행</button>
+            </div>
+            <p class="form-helper">
+              질문은 한국어/영어 모두 지원하며, 현재 선택된 마켓/모드를 기반으로 코파일럿과 어시스턴트가 함께 분석합니다.
+            </p>
+          </form>
+
+          <div class="copilot-output">
+            <article class="copilot-card">
+              <header>
+                <h3>코파일럿 응답</h3>
+              </header>
+              <p id="copilot-answer" class="copilot-answer" data-collapsible="220">
+                전략 질문을 입력하면 AI 코파일럿이 시장 요약과 권장 행동을 제안합니다.
+              </p>
+              <div class="copilot-columns">
+                <div>
+                  <h4>핵심 요약</h4>
+                  <ul id="copilot-summary" class="copilot-list" data-collapsible="220"></ul>
+                </div>
+                <div>
+                  <h4>실행 체크리스트</h4>
+                  <ul id="copilot-actions" class="copilot-list"></ul>
+                </div>
+                <div>
+                  <h4>리스크 경고</h4>
+                  <ul id="copilot-risk-notices" class="copilot-list"></ul>
+                </div>
+              </div>
+              <div>
+                <h4>포트폴리오 하이라이트</h4>
+                <ul id="copilot-highlights" class="copilot-list"></ul>
+              </div>
+            </article>
+
+            <article class="copilot-card copilot-card--autopilot">
+              <header>
+                <h3>AutoPilot 매매 플랜</h3>
+                <span id="autopilot-bias" class="badge badge--neutral">대기</span>
+              </header>
+              <dl class="copilot-autopilot__grid">
+                <div>
+                  <dt>매매 방향</dt>
+                  <dd id="autopilot-side">-</dd>
+                </div>
+                <div>
+                  <dt>신뢰도</dt>
+                  <dd id="autopilot-confidence">-</dd>
+                </div>
+                <div>
+                  <dt>포지션 규모</dt>
+                  <dd id="autopilot-size">-</dd>
+                </div>
+                <div>
+                  <dt>손절 / 테이크</dt>
+                  <dd id="autopilot-stops">-</dd>
+                </div>
+                <div>
+                  <dt>트레일링</dt>
+                  <dd id="autopilot-trailing">-</dd>
+                </div>
+              </dl>
+              <div class="copilot-split">
+                <div>
+                  <h4>근거</h4>
+                  <ul id="autopilot-reasoning" class="copilot-list" data-collapsible="220"></ul>
+                </div>
+                <div>
+                  <h4>모니터링</h4>
+                  <ul id="autopilot-monitoring" class="copilot-list" data-collapsible="220"></ul>
+                </div>
+              </div>
+              <p id="autopilot-hold-reason" class="autopilot-note muted">
+                오토파일럿을 시작하면 관망 사유와 진행 상태가 여기에 표시됩니다.
+              </p>
+            </article>
+
+            <article class="copilot-card copilot-card--assistant">
+              <header>
+                <h3>AI 어시스턴트 대화 기록</h3>
+                <div class="copilot-card__actions">
+                  <span id="assistant-status" class="badge badge--ghost">대기 중</span>
+                  <button id="assistant-clear" class="btn btn--ghost btn--compact" type="button">기록 지우기</button>
+                </div>
+              </header>
+              <ul id="assistant-history" class="assistant-history" data-collapsible="320">
+                <li class="assistant-history__placeholder">질문을 입력하면 분석과 답변이 여기에 쌓입니다.</li>
+              </ul>
+            </article>
+
+            <article class="copilot-card">
+              <header>
+                <h3>코파일럿 로그</h3>
+              </header>
+              <ul id="copilot-log" class="copilot-log" data-collapsible="220">
+                <li class="copilot-log__placeholder">아직 실행 기록이 없습니다.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel--alpha">
+        <header>
+          <h2>알파 브리핑</h2>
+          <span class="panel-subtitle">켈리, 왜도, 낙폭 지수를 바탕으로 전략 운용 포인트 요약</span>
+        </header>
+        <div class="alpha-briefing__body">
+          <pre id="alpha-briefing" data-collapsible="220">
+시뮬레이션을 실행하면 전문가 브리핑이 제공됩니다.
+          </pre>
+        </div>
+      </section>
+
+      <section class="panel panel--news">
+        <header>
+          <h2>기관 뉴스 레이더</h2>
+          <span class="panel-subtitle">IMF, BIS, 글로벌 운용사 리포트를 즉시 확인</span>
+        </header>
+        <ul id="news-list" class="news-list">
+          <li class="news-placeholder">뉴스를 불러오는 중입니다...</li>
+        </ul>
+      </section>
+
+      <section class="panel panel--monte">
+        <header>
+          <h2>몬테카를로 스트레스 테스트</h2>
+          <span class="panel-subtitle">거래 리턴을 부트스트랩하여 최악/최선/중앙 시나리오 추정</span>
+        </header>
+        <div class="monte-grid">
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">중앙값 시나리오</span>
+            <strong id="metric-mc-median" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">부트스트랩 50% 지점</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">5% 최악</span>
+            <strong id="metric-mc-p05" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">극단 손실 경계</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">95% 최선</span>
+            <strong id="metric-mc-p95" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">상단 가능 구간</span>
+          </article>
+          <article class="metric-card metric-card--compact">
+            <span class="metric-label">평균 시나리오</span>
+            <strong id="metric-mc-avg" class="metric-value metric-value--compact">0.00%</strong>
+            <span class="metric-subtext">부트스트랩 기대값</span>
           </article>
         </div>
       </section>
@@ -66,9 +1233,13 @@
       <section class="panel panel--chart">
         <header>
           <h2>전략 에퀴티 곡선</h2>
-          <span class="panel-subtitle">자본曲선을 통해 상승/하락 리듬을 체크하세요</span>
+          <span class="panel-subtitle">자본曲선을 통해 상승/하락 리듬과 위험 구간을 한눈에 파악하세요</span>
         </header>
-        <canvas id="equity-chart" height="160"></canvas>
+        <canvas id="equity-chart" height="130"></canvas>
+        <p id="equity-note" class="chart-note">
+          시뮬레이션을 실행하면 시작 자본과 종료 자본, 최대/최소 구간, 누적 봉수를 요약해 드립니다.
+          상승·하락 전환점과 누적 변동폭을 참고해 전략의 안정성을 판단하세요.
+        </p>
       </section>
 
       <section class="panel panel--controls">
@@ -77,6 +1248,31 @@
           <span class="panel-subtitle">EMA 전략을 원하는 감도로 미세 조정</span>
         </header>
         <form id="strategy-form" class="control-grid">
+          <label class="control-field">
+            <span>마켓 (Upbit)</span>
+            <input
+              id="strategy-market"
+              type="text"
+              name="market"
+              list="market-options"
+              placeholder="예: KRW-BTC"
+              data-default-value="KRW-BTC"
+            />
+          </label>
+          <label class="control-field">
+            <span>캔들 간격</span>
+            <select id="strategy-interval" name="interval">
+              <option value="minute60">60분</option>
+              <option value="minute15">15분</option>
+              <option value="minute240">4시간</option>
+              <option value="day">일간</option>
+              <option value="week">주간</option>
+            </select>
+          </label>
+          <label class="control-field control-field--checkbox">
+            <input id="strategy-live-data" type="checkbox" name="use_live_data" checked />
+            <span>Upbit 실시간 캔들 사용</span>
+          </label>
           <label class="control-field">
             <span>Fast EMA</span>
             <input type="number" name="fast_period" min="2" max="60" value="12" />
@@ -87,11 +1283,27 @@
           </label>
           <label class="control-field">
             <span>초기 자본 (KRW)</span>
-            <input type="number" name="initial_capital" min="100000" step="100000" value="5000000" />
+            <input type="number" name="initial_capital" min="100000" step="100000" value="20000000" />
           </label>
           <label class="control-field">
             <span>수수료율</span>
             <input type="number" name="fee_rate" min="0" max="0.01" step="0.0001" value="0.0005" />
+          </label>
+          <label class="control-field">
+            <span>거래당 위험 (자본%)</span>
+            <input type="number" name="risk_per_trade_pct" min="0.001" max="1" step="0.005" value="0.02" />
+          </label>
+          <label class="control-field">
+            <span>스톱로스 폭 (비율)</span>
+            <input type="number" name="stop_loss_pct" min="0.005" max="0.5" step="0.005" value="0.03" />
+          </label>
+          <label class="control-field">
+            <span>테이크프로핏 (비율)</span>
+            <input type="number" name="take_profit_pct" min="0.01" max="1.5" step="0.01" placeholder="선택" />
+          </label>
+          <label class="control-field">
+            <span>트레일링 스톱 (비율)</span>
+            <input type="number" name="trailing_stop_pct" min="0.01" max="0.5" step="0.005" placeholder="선택" />
           </label>
           <label class="control-field">
             <span>랜덤 시드</span>
@@ -101,60 +1313,324 @@
         </form>
       </section>
 
+      <section class="panel panel--ai-portfolio">
+        <header>
+          <h2>AI 포트폴리오 아키텍트</h2>
+          <span class="panel-subtitle">AI가 ETF와 코인 비중을 자동 계산하여 리스크 대비 수익을 극대화합니다</span>
+        </header>
+        <div class="ai-portfolio-grid">
+          <form id="ai-portfolio-form" class="ai-portfolio-form">
+            <label class="control-field">
+              <span>투자 자본 (KRW)</span>
+              <input id="ai-capital" name="capital" type="number" value="20000000" min="100000" step="100000" />
+            </label>
+            <label class="control-field">
+              <span>위험 성향</span>
+              <input id="ai-risk" name="risk_appetite" type="range" min="0" max="1" step="0.05" value="0.5" />
+              <small id="ai-risk-label">균형형 (50%)</small>
+            </label>
+            <label class="control-field">
+              <span>선호 마켓 (쉼표로 구분)</span>
+              <input id="ai-preferred" name="preferred_markets" type="text" placeholder="KRW-BTC, KRW-ETH" />
+            </label>
+            <label class="control-checkbox">
+              <input id="ai-include-cash" name="include_cash" type="checkbox" checked />
+              <span>현금 / MMF 방어 비중 포함</span>
+            </label>
+            <button class="btn btn--accent" type="submit">AI 포트폴리오 생성</button>
+          </form>
+          <div class="ai-portfolio-output">
+            <article class="ai-portfolio-summary">
+              <h3>핵심 요약</h3>
+              <dl>
+                <div><dt>예상 연 수익률</dt><dd id="ai-expected-return">-</dd></div>
+                <div><dt>예상 연 변동성</dt><dd id="ai-expected-vol">-</dd></div>
+                <div><dt>샤프 지수</dt><dd id="ai-sharpe">-</dd></div>
+                <div><dt>다변화 점수</dt><dd id="ai-diversification">-</dd></div>
+                <div><dt>테일 리스크 가드</dt><dd id="ai-tail-risk">-</dd></div>
+              </dl>
+              <ul id="ai-hedges" class="ai-hedges"></ul>
+            </article>
+            <div class="ai-allocations">
+              <h3>자산 배분</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>티커</th>
+                    <th>자산 유형</th>
+                    <th>비중</th>
+                    <th>금액 (KRW)</th>
+                    <th>예상 수익률</th>
+                    <th>예상 변동성</th>
+                    <th>AI 논리</th>
+                  </tr>
+                </thead>
+                <tbody id="ai-allocations-body">
+                  <tr>
+                    <td colspan="7" class="ai-allocations__placeholder">AI 포트폴리오 결과가 여기에 표시됩니다.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="ai-briefings" class="ai-briefings" data-collapsible="260">
+          AI 시장 브리핑이 여기에 표시됩니다.
+        </div>
+      </section>
+
+      <section class="panel panel--blueprint">
+        <header>
+          <h2>위험 프로파일 기반 포트폴리오 설계</h2>
+          <span class="panel-subtitle">안정형 미국 ETF와 공격형 코인을 한 번에 설계하는 듀얼 버킷 모델</span>
+        </header>
+        <form id="blueprint-form" class="blueprint-form">
+          <div class="blueprint-controls">
+            <label class="control-field">
+              <span>투자 자본 (KRW)</span>
+              <input id="blueprint-capital" type="number" value="20000000" step="100000" min="100000" />
+            </label>
+            <label class="control-field blueprint-slider">
+              <span>위험 프로파일</span>
+              <input id="blueprint-risk" type="range" min="0" max="1" step="0.1" value="0.5" />
+              <small id="blueprint-risk-label">균형형 (50.00%)</small>
+            </label>
+            <button id="blueprint-btn" class="btn btn--accent" type="submit">블루프린트 생성</button>
+          </div>
+          <div class="blueprint-grid">
+            <div>
+              <h3>안정 자산 (미국 ETF)</h3>
+              <textarea
+                id="blueprint-stable"
+                spellcheck="false"
+                placeholder="안정 자산 JSON 배열을 입력하세요."
+              >[
+  {
+    "symbol": "BND",
+    "weight": 0.55,
+    "expected_return_pct": 4.2,
+    "expected_volatility_pct": 5.5
+  },
+  {
+    "symbol": "JEPI",
+    "weight": 0.45,
+    "expected_return_pct": 6.1,
+    "expected_volatility_pct": 7.0
+  }
+]</textarea>
+            </div>
+            <div>
+              <h3>공격 자산 (디지털 자산)</h3>
+                <textarea
+                  id="blueprint-aggressive"
+                  spellcheck="false"
+                  placeholder="공격 자산 JSON 배열을 입력하세요."
+                >[
+  {
+    "symbol": "BTC",
+    "weight": 0.5,
+    "expected_return_pct": 32,
+    "expected_volatility_pct": 60
+  },
+  {
+    "symbol": "ETH",
+    "weight": 0.3,
+    "expected_return_pct": 26,
+    "expected_volatility_pct": 52
+  },
+  {
+    "symbol": "SOL",
+    "weight": 0.2,
+    "expected_return_pct": 42,
+    "expected_volatility_pct": 78
+  }
+]</textarea>
+            </div>
+          </div>
+        </form>
+        <div id="blueprint-output" class="blueprint-output">위험 프로파일과 자산 구성을 입력하면 설계 결과가 여기에 표시됩니다.</div>
+      </section>
+
       <section class="panel panel--portfolio">
         <header>
           <h2>포트폴리오 리밸런싱</h2>
-          <span class="panel-subtitle">안정/공격 비중을 스마트하게 맞춰드립니다</span>
+          <span class="panel-subtitle">블루프린트 결과를 목표 비중에 반영해 실거래 플랜을 준비하세요</span>
         </header>
         <div class="portfolio-grid">
           <div>
             <h3>현재 포지션 (KRW)</h3>
-            <textarea id="current-positions" placeholder='{"SPY": 2500000, "QQQ": 1500000, "BTC": 1200000}'></textarea>
+            <textarea
+              id="current-positions"
+              spellcheck="false"
+              placeholder="현재 보유 자산 JSON을 입력하세요."
+            >{
+  "SPY": 2500000,
+  "QQQ": 1500000,
+  "BTC": 1200000
+}</textarea>
           </div>
           <div>
             <h3>목표 비중</h3>
-            <textarea id="target-allocations" placeholder='{"SPY": 0.35, "QQQ": 0.25, "BTC": 0.25, "ETH": 0.15}'></textarea>
+            <textarea
+              id="target-allocations"
+              spellcheck="false"
+              placeholder="목표 비중 JSON을 입력하세요."
+            >{
+  "SPY": 0.35,
+  "QQQ": 0.25,
+  "BTC": 0.25,
+  "ETH": 0.15
+}</textarea>
           </div>
         </div>
         <div class="portfolio-actions">
           <label class="control-field">
             <span>총 포트폴리오 가치 (KRW)</span>
-            <input id="portfolio-value" type="number" value="8000000" step="100000" />
+            <input id="portfolio-value" type="number" value="20000000" step="100000" />
           </label>
           <button id="rebalance-btn" class="btn btn--accent" type="button">리밸런싱 제안 받기</button>
         </div>
         <pre id="rebalance-output" class="rebalance-output">리밸런싱 결과가 여기에 표시됩니다.</pre>
       </section>
 
-      <section class="panel panel--trades">
+      <section class="panel panel--account" id="panel-account">
         <header>
-          <h2>거래 히스토리</h2>
-          <span class="panel-subtitle">실행 로그로 전략의 감각을 확인하세요</span>
+          <h2>계정 &amp; 보안 설정</h2>
+          <span class="panel-subtitle">비밀번호와 Google Authenticator 2단계 인증을 관리하세요</span>
         </header>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>진입</th>
-                <th>청산</th>
-                <th>진입가</th>
-                <th>청산가</th>
-                <th>수량</th>
-                <th>PnL (KRW)</th>
-                <th>수익률</th>
-              </tr>
-            </thead>
-            <tbody id="trade-table"></tbody>
-          </table>
+        <div class="account-grid">
+          <article class="account-card">
+            <h3>비밀번호 변경</h3>
+            <p id="account-password-status" class="account-status" data-status="idle">
+              현재 비밀번호와 보안 코드를 입력한 뒤 새 비밀번호를 저장하세요.
+            </p>
+            <form id="account-password-form" class="account-form">
+              <label class="control-field">
+                <span>현재 비밀번호</span>
+                <input id="account-password-current" type="password" autocomplete="current-password" required />
+              </label>
+              <label class="control-field">
+                <span>새 비밀번호</span>
+                <input id="account-password-new" type="password" autocomplete="new-password" minlength="8" required />
+              </label>
+              <label class="control-field">
+                <span>보안 코드</span>
+                <input
+                  id="account-password-totp"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="\d{6,8}"
+                  placeholder="Google Authenticator 6자리"
+                  required
+                />
+              </label>
+              <div class="account-actions">
+                <button class="btn btn--primary" type="submit">비밀번호 변경</button>
+              </div>
+            </form>
+          </article>
+          <article class="account-card">
+            <h3>이중 인증 관리</h3>
+            <p class="account-status" id="account-totp-status" data-status="idle">
+              현재 시크릿을 Google Authenticator에 등록하고, 필요하면 새 시크릿을 발급해 즉시 교체할 수 있습니다.
+            </p>
+            <div class="account-totp-qr" aria-live="polite">
+              <figure class="account-totp-qr__figure">
+                <img
+                  id="account-totp-qr-image"
+                  alt="Google Authenticator 등록용 QR 코드"
+                  width="180"
+                  height="180"
+                  loading="lazy"
+                  hidden
+                />
+                <figcaption id="account-totp-helper" class="account-helper">
+                  스마트폰에서 Google Authenticator를 열고 QR 코드를 스캔하세요.
+                </figcaption>
+              </figure>
+              <div class="account-totp-qr__actions">
+                <button class="btn btn--ghost btn--compact" id="account-totp-copy" type="button" disabled>시크릿 복사</button>
+                <button class="btn btn--ghost btn--compact" id="account-totp-download" type="button" disabled>QR 다운로드</button>
+              </div>
+            </div>
+            <dl class="account-totp-details">
+              <div>
+                <dt>현재 시크릿</dt>
+                <dd><code id="account-totp-secret">-</code></dd>
+              </div>
+              <div>
+                <dt>OTP URI</dt>
+                <dd>
+                  <a id="account-totp-uri" href="#" rel="noopener">등록 링크 준비 중…</a>
+                </dd>
+              </div>
+              <div>
+                <dt>마지막 갱신</dt>
+                <dd id="account-totp-updated">-</dd>
+              </div>
+            </dl>
+            <ul class="account-totp-steps">
+              <li>Google Authenticator 앱에서 <strong>+ 버튼 → QR 코드 스캔</strong>을 선택합니다.</li>
+              <li>화면에 표시된 QR 코드를 스캔하거나 시크릿을 직접 입력합니다.</li>
+              <li>앱에 표시된 6자리 코드를 아래 입력창에 입력하면 등록이 완료됩니다.</li>
+            </ul>
+            <form id="account-totp-form" class="account-form">
+              <label class="control-field">
+                <span>현재 비밀번호</span>
+                <input id="account-totp-password" type="password" autocomplete="current-password" required />
+              </label>
+              <label class="control-field">
+                <span>보안 코드</span>
+                <input
+                  id="account-totp-code"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="\d{6,8}"
+                  placeholder="Google Authenticator 6자리"
+                  required
+                />
+              </label>
+              <div class="account-actions">
+                <button class="btn btn--accent" id="account-totp-rotate" type="submit">새 시크릿 발급</button>
+              </div>
+            </form>
+          </article>
         </div>
       </section>
+
     </main>
 
+    <nav class="mobile-bottom-nav" aria-label="모바일 빠른 이동">
+      <a href="#panel-topline" class="mobile-bottom-nav__item">
+        <span aria-hidden="true">📊</span>
+        <span>요약</span>
+      </a>
+      <a href="#panel-execution" class="mobile-bottom-nav__item">
+        <span aria-hidden="true">💼</span>
+        <span>트레이딩</span>
+      </a>
+      <a href="#panel-autopilot" class="mobile-bottom-nav__item">
+        <span aria-hidden="true">🤖</span>
+        <span>오토파일럿</span>
+      </a>
+      <a href="#panel-copilot" class="mobile-bottom-nav__item">
+        <span aria-hidden="true">🧠</span>
+        <span>코파일럿</span>
+      </a>
+      <a href="#panel-account" class="mobile-bottom-nav__item">
+        <span aria-hidden="true">🛡️</span>
+        <span>계정</span>
+      </a>
+    </nav>
+
     <footer class="footer">
-      <p>
-        © <span id="year"></span> ILJIN Copilot · Upbit + Global ETF 멀티자산 어드바이저.
-        자동화, 데이터 스토리텔링, 감각적인 UX를 경험해보세요.
-      </p>
+      <div class="footer__inner layout-shell">
+        <p>
+          © <span id="year"></span> Sado Trade Bot · Upbit + Global ETF 멀티자산 어드바이저.
+          자동화, 데이터 스토리텔링, 감각적인 UX를 경험해보세요.
+        </p>
+      </div>
     </footer>
+    <button id="back-to-top" class="back-to-top" type="button" aria-label="맨 위로">▲</button>
   </body>
 </html>
